@@ -1,0 +1,20 @@
+# Secrets and local environment
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime artifacts (indexes and metadata are generated, not committed)
+storage/indexes/*
+storage/metadata/*
+!storage/indexes/.gitkeep
+!storage/metadata/.gitkeep
+
+# Sample PDFs stay out of the repo; fetch them with scripts/download_samples.py
+*.pdf
+
+# OS noise
+.DS_Store
+Thumbs.db

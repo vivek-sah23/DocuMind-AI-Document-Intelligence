@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DocuMind — Chat with your PDFs, with citations</title>
+  <meta name="description" content="DocuMind is a first-principles RAG system: upload a PDF, retrieve the exact passages with FAISS, and get Gemini answers with verifiable page-level citations." />
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="DocuMind home">
+        <img src="/static/logo.svg" alt="" class="brand-mark" />
+        <span class="brand-name">DocuMind</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#app">Product</a>
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="https://github.com/vivek-sah23/DocuMind-AI-Document-Intelligence" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <a href="#app" class="btn btn-dark btn-sm header-cta">Launch app</a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">AI Document Intelligence &middot; First-principles RAG</span>
+          <h1>Chat with your PDFs.<br />Every answer has receipts.</h1>
+          <p class="hero-sub">
+            Upload a document and DocuMind indexes it with FAISS, retrieves the exact
+            passages, and lets Gemini answer &mdash; citing the page it came from,
+            every time. No hallucinated sources, ever.
+          </p>
+          <div class="hero-actions">
+            <a href="#app" class="btn btn-dark">Start chatting</a>
+            <a href="#how" class="btn btn-ghost">See how it works</a>
+          </div>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="preview-card">
+            <div class="preview-msg user">What are the six CSF 2.0 functions?</div>
+            <div class="preview-msg bot">
+              The six functions are Govern, Identify, Protect, Detect, Respond and
+              Recover <span class="cite-pill">Passage 2</span>
+            </div>
+            <div class="preview-source">
+              <div class="preview-source-head">
+                <span class="doc-dot"></span> nist_csf_2.0.pdf &middot; page 12
+                <span class="score">0.81</span>
+              </div>
+              <p>&ldquo;&hellip;the Functions are Govern, Identify, Protect, Detect, Respond, and Recover&hellip;&rdquo;</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="app" class="app-section">
+      <div class="container">
+        <div class="section-head">
+          <h2>The app</h2>
+          <p>Upload a PDF on the left, ask questions on the right.</p>
+        </div>
+        <div id="key-banner" class="key-banner" hidden>
+          The server is running without a <code>GEMINI_API_KEY</code>, so answers are
+          disabled. Indexing and search still work.
+        </div>
+        <div class="app-grid">
+
+          <aside class="card docs-card">
+            <h3>Documents</h3>
+            <label id="dropzone" class="dropzone" for="file-input">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span class="dz-title">Drop a PDF here or browse</span>
+              <span class="dz-sub">Up to 50 MB &middot; text-based PDFs</span>
+              <input id="file-input" type="file" accept="application/pdf,.pdf" />
+            </label>
+            <div id="upload-status" class="upload-status" hidden></div>
+            <ul id="doc-list" class="doc-list"></ul>
+            <p id="doc-empty" class="doc-empty">No documents yet.</p>
+          </aside>
+
+          <section class="card chat-card">
+            <h3>Chat</h3>
+            <div id="messages" class="messages">
+              <div class="msg bot">
+                <div class="bubble">Upload a PDF and ask me anything about it. I only answer from your documents, and I always show my sources.</div>
+              </div>
+            </div>
+            <form id="chat-form" class="chat-form">
+              <input id="chat-input" type="text" placeholder="Ask about your documents&hellip;" autocomplete="off" />
+              <button type="submit" class="btn btn-dark btn-sm" id="send-btn">Send</button>
+            </form>
+          </section>
+
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="features-section">
+      <div class="container">
+        <div class="section-head">
+          <h2>Built to be verifiable</h2>
+          <p>RAG written from first principles, with the failure modes engineered out.</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>Citations that cannot hallucinate</h4>
+            <p>The model only sees [Passage N] labels. Page numbers and titles come from the metadata store, never from the model. Out-of-range tags are dropped before rendering.</p>
+          </div>
+          <div class="feature-card">
+            <h4>No orchestration frameworks</h4>
+            <p>Extraction, chunking, embedding, indexing and prompting are plain, inspectable Python on top of PyMuPDF, sentence-transformers and FAISS. No LangChain.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Grounded or refused</h4>
+            <p>Below a similarity threshold the system refuses instead of guessing. Prompt-injection text inside a PDF is treated as data, never as instructions.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Defensive by default</h4>
+            <p>Uploads pass extension, magic-byte, corruption and extractable-text checks. Metadata persists as JSON, not pickle, so a tampered file cannot execute code.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="how-section">
+      <div class="container">
+        <div class="section-head">
+          <h2>How it works</h2>
+          <p>Two deterministic pipelines: offline indexing, online answering.</p>
+        </div>
+        <ol class="steps">
+          <li><span class="step-n">1</span><div><h4>Upload</h4><p>Your PDF is validated and hashed with SHA-256, so the same file is never indexed twice.</p></div></li>
+          <li><span class="step-n">2</span><div><h4>Chunk &amp; embed</h4><p>Pages are split on sentence boundaries into ~200-token windows with overlap, then embedded with all-MiniLM-L6-v2.</p></div></li>
+          <li><span class="step-n">3</span><div><h4>Retrieve</h4><p>Your question is embedded the same way and FAISS returns the closest passages by exact cosine similarity.</p></div></li>
+          <li><span class="step-n">4</span><div><h4>Answer with receipts</h4><p>Gemini answers only from those passages. Citations resolve back to the document name and page number.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="#top">
+          <img src="/static/logo.svg" alt="" class="brand-mark" />
+          <span class="brand-name">DocuMind</span>
+        </a>
+        <p>Verifiable answers from your documents.</p>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        <a href="#app">Product</a>
+        <a href="#features">Features</a>
+        <a href="https://github.com/vivek-sah23/DocuMind-AI-Document-Intelligence" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/vivek-sah23/DocuMind-AI-Document-Intelligence/issues" target="_blank" rel="noopener">Report an issue</a>
+      </nav>
+    </div>
+    <div class="container footer-base">
+      <span>&copy; 2026 Vivek Sah &middot; MIT License</span>
+      <span>PyMuPDF &middot; sentence-transformers &middot; FAISS &middot; Gemini</span>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
