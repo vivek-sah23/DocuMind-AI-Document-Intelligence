@@ -97,3 +97,18 @@ def test_full_flow_against_tmp_stack(client, tmp_path, two_page_pdf):
 def test_chat_validation(client):
     r = client.post("/api/chat", json={"question": ""})
     assert r.status_code == 422
+
+
+def test_rate_limiter_blocks_after_limit():
+    from src.utils import RateLimiter
+
+    rl = RateLimiter(limit=3, window_seconds=60)
+    assert [rl.allow("a") for _ in range(4)] == [True, True, True, False]
+    assert rl.allow("b") is True
+
+
+def test_redact_removes_secret():
+    from src.utils import redact
+
+    assert "SECRET123" not in redact("boom SECRET123 trace", "SECRET123")
+    assert "AIza" not in redact("key=AIza" + "x" * 30)

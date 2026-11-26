@@ -17,7 +17,7 @@ from google.genai import types
 from google.genai.errors import ClientError, ServerError
 
 from .config import settings
-from .utils import get_logger
+from .utils import get_logger, redact
 
 logger = get_logger(__name__)
 
@@ -97,8 +97,9 @@ class GeminiGenerator:
                 retriable = code == 429 or (isinstance(code, int) and code >= 500)
                 if not retriable or attempt == settings.llm_max_retries:
                     raise LLMUnavailableError(
-                        f"Gemini request failed (code {code}): {exc}"
-                    ) from exc
+                        f"Gemini request failed (code {code}): "
+                        f"{redact(exc, self.api_key)}"
+                    ) from None
                 logger.warning(
                     "Gemini %s on attempt %d; retrying in %.1fs", code, attempt, delay
                 )

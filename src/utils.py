@@ -39,3 +39,40 @@ def format_bytes(num: int) -> str:
             return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
         size /= 1024
     return f"{size:.1f} GB"
+
+
+def redact(text: str, secret: str | None = None) -> str:
+    """Strip the configured secret and common key shapes from any text
+    before it is logged or returned to a client."""
+    import re
+
+    out = str(text)
+    if secret:
+        out = out.replace(secret, "[redacted]")
+    return re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "[redacted]", out)
+
+
+class RateLimiter:
+    """Sliding-window per-key limiter (in memory, single worker)."""
+
+    def __init__(self, limit: int, window_seconds: int) -> None:
+        import threading
+        from collections import defaultdict, deque
+
+        self.limit = limit
+        self.window = window_seconds
+        self._hits = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        import time
+
+        now = time.monotonic()
+        with self._lock:
+            q = self._hits[key]
+            while q and now - q[0] > self.window:
+                q.popleft()
+            if len(q) >= self.limit:
+                return False
+            q.append(now)
+            return True

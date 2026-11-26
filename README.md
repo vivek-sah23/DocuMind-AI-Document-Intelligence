@@ -117,7 +117,7 @@ DocuMind-AI-Document-Intelligence/
 ├── scripts/download_samples.py  Fetch the evaluation PDFs
 ├── data/sample_pdfs/        Evaluation documents (gitignored)
 ├── storage/                 FAISS indexes + JSON metadata (gitignored)
-├── tests/                   58 tests across all pipeline stages
+├── tests/                   60 tests across all pipeline stages
 ├── assets/                  Logo and architecture diagram
 ├── render.yaml              One-click Render blueprint
 └── requirements.txt         Pinned dependency manifest
@@ -145,7 +145,7 @@ pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requiremen
 cp .env.example .env          # add your GEMINI_API_KEY
 python scripts/download_samples.py
 uvicorn server:app --reload   # http://localhost:8000
-pytest                        # 58 tests, no API key needed
+pytest                        # 60 tests, no API key needed
 ```
 
 Get a Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Without it the app still indexes and searches; only answer generation is disabled.

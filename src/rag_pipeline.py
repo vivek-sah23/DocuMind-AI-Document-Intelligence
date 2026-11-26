@@ -12,7 +12,7 @@ import time
 
 from .llm import REFUSAL_TEXT, GeminiGenerator, LLMUnavailableError, format_context
 from .retriever import Retriever
-from .utils import get_logger
+from .utils import get_logger, redact
 
 logger = get_logger(__name__)
 
@@ -50,8 +50,8 @@ class RAGPipeline:
         except LLMUnavailableError as exc:
             raise
         except Exception as exc:  # defensive: never leak a stack to the UI
-            logger.exception("Generation failed")
-            raise LLMUnavailableError(str(exc)) from exc
+            logger.error("Generation failed: %s", redact(exc))
+            raise LLMUnavailableError("Answer generation failed") from None
 
         citations = self._resolve_citations(raw_answer, hits)
         refused = raw_answer.strip().startswith(

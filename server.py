@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -21,7 +21,7 @@ from src.llm import GeminiGenerator, LLMUnavailableError
 from src.pdf_processor import PDFValidationError
 from src.rag_pipeline import RAGPipeline
 from src.retriever import Retriever
-from src.utils import get_logger
+from src.utils import RateLimiter, get_logger
 from src.vector_store import VectorStore
 
 logger = get_logger(__name__)
@@ -56,6 +56,19 @@ app = FastAPI(title="DocuMind", version="1.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+chat_limiter = RateLimiter(limit=10, window_seconds=60)
+upload_limiter = RateLimiter(limit=5, window_seconds=300)
+
+
+def client_ip(request: Request) -> str:
+    """Render terminates TLS in front of the app; the real client is the
+    first hop in X-Forwarded-For."""
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     doc_id: str | None = None
@@ -86,7 +99,9 @@ def list_documents():
 
 
 @app.post("/api/documents", status_code=201)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(request: Request, file: UploadFile = File(...)):
+    if not upload_limiter.allow(client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many uploads. Try again in a few minutes.")
     data = await file.read()
     manager = app.state.stack["manager"]
     try:
@@ -109,7 +124,12 @@ def delete_document(doc_id: str):
 
 
 @app.post("/api/chat")
-def chat(request: ChatRequest):
+def chat(request: ChatRequest, http: Request):
+    if not chat_limiter.allow(client_ip(http)):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many questions. Please wait a minute and try again.",
+        )
     if not settings.gemini_configured:
         raise HTTPException(
             status_code=503,
