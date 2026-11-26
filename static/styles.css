@@ -243,3 +243,5 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; }
 .footer-simple p + p { font-size: 13px; }
 .app-grid > *, .hero-grid > * { min-width: 0; }
 html, body { overflow-x: hidden; }
+.chat-form input { flex: 1 1 0; min-width: 0; width: 100%; }
+.chat-form .btn { flex: 0 0 auto; }
