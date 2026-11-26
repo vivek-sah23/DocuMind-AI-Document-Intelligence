@@ -12,7 +12,7 @@
 <p align="center">
   <b>AI document intelligence with verifiable citations</b><br/>
   <i>First-principles RAG: no LangChain, no wrappers, every citation resolved from stored metadata</i>
-  <br/><b>PyMuPDF</b> · <b>sentence-transformers</b> · <b>FAISS</b> · <b>FastAPI</b> · <b>Gemini</b>
+  <br/><b>PyMuPDF</b> · <b>ONNX MiniLM</b> · <b>FAISS</b> · <b>FastAPI</b> · <b>Gemini</b>
 </p>
 
 <br/>
@@ -106,7 +106,7 @@ DocuMind-AI-Document-Intelligence/
 │   ├── config.py            Central settings, env validation, paths
 │   ├── pdf_processor.py     Validation, PyMuPDF extraction, OCR hook
 │   ├── text_chunker.py      Sentence splitting, token-window packing
-│   ├── embeddings.py        SentenceTransformer wrapper, L2 normalization
+│   ├── embeddings.py        MiniLM (ONNX) wrapper, L2 normalization
 │   ├── vector_store.py      FAISS IndexIDMap2 + JSON persistence
 │   ├── retriever.py         Query embedding, top-k, threshold filter
 │   ├── llm.py               Gemini client, grounded prompt, retries
@@ -141,7 +141,7 @@ DocuMind-AI-Document-Intelligence/
 
 ```bash
 python -m venv venv && source venv/bin/activate
-pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+pip install -r requirements.txt
 cp .env.example .env          # add your GEMINI_API_KEY
 python scripts/download_samples.py
 uvicorn server:app --reload   # http://localhost:8000
@@ -172,7 +172,7 @@ The free plan sleeps after 15 minutes idle; the first visit after idle takes abo
 
 - **OCR is an optional hook.** Scanned pages are detected and flagged; actual OCR needs `pytesseract`, `Pillow` and a system `tesseract` binary, which are not installed by default.
 - **Threshold is a heuristic.** 0.25 works reasonably for MiniLM cosine scores, but tune it on your own documents and measure recall@k.
-- **Free-tier memory.** torch + the embedding model run close to the 512 MB Render free limit. One worker and `OMP_NUM_THREADS=1` are set; upgrade the plan if you see out-of-memory restarts.
+- **Free-tier memory.** The embedding model runs on ONNX Runtime (no torch) to stay inside the 512 MB Render free limit. One worker and `OMP_NUM_THREADS=1` are set; upgrade the plan if you see out-of-memory restarts.
 - **Index is local.** Storage lives on the service disk, so redeploys on the free plan reset the index. Re-upload documents after a deploy.
 - **Single user.** No accounts or auth; anyone with the URL can upload and ask.
 
