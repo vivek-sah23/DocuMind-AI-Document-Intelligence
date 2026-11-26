@@ -17,7 +17,7 @@
 
 <br/>
 
-[![Live](https://img.shields.io/badge/Live-documind-19E6FF?style=for-the-badge&labelColor=1F1D1B)](https://documind.onrender.com/)
+[![Live](https://img.shields.io/badge/Live-documind-19E6FF?style=for-the-badge&labelColor=1F1D1B)](https://documind-bhkl.onrender.com/)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3C873A?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-backend-7DFF6B?style=for-the-badge&labelColor=1F1D1B)](https://fastapi.tiangolo.com)
 [![Hosting](https://img.shields.io/badge/Hosting-Render%20Free-FFB62E?style=for-the-badge&labelColor=1F1D1B)](https://render.com)
@@ -40,6 +40,8 @@
 ---
 
 ## <img src="https://api.iconify.design/lucide/flame.svg?color=%2319E6FF&width=22&height=22" alt=""/> Overview
+
+**Live:** https://documind-bhkl.onrender.com/ (free hosting, first visit after idle can take about a minute to wake up)
 
 > **DocuMind** lets you upload PDFs and ask questions in plain language. It indexes documents offline, retrieves the exact passages that matter with FAISS, and lets Gemini answer strictly from those passages, with citations that resolve to the real document name and page number.
 
