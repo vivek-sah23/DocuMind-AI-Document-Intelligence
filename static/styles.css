@@ -237,3 +237,7 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; }
   .msg .bubble, .sources { max-width: 94%; }
   .footer-base { flex-direction: column; gap: 6px; }
 }
+
+.footer-simple { padding: 28px 0; text-align: center; font-size: 14px; color: var(--muted); line-height: 1.7; }
+.footer-simple strong { color: var(--ink); font-weight: 700; }
+.footer-simple p + p { font-size: 13px; }
