@@ -223,7 +223,7 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; }
   .hero-grid { grid-template-columns: 1fr; gap: 36px; }
   .hero-visual { order: 2; }
   .preview-card { transform: none; }
-  .app-grid { grid-template-columns: 1fr; }
+  .app-grid { grid-template-columns: minmax(0, 1fr); }
   .feature-grid { grid-template-columns: 1fr; }
   .steps { grid-template-columns: repeat(2, 1fr); }
   .footer-inner { flex-direction: column; gap: 24px; }
@@ -241,3 +241,5 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; }
 .footer-simple { padding: 28px 0; text-align: center; font-size: 14px; color: var(--muted); line-height: 1.7; }
 .footer-simple strong { color: var(--ink); font-weight: 700; }
 .footer-simple p + p { font-size: 13px; }
+.app-grid > *, .hero-grid > * { min-width: 0; }
+html, body { overflow-x: hidden; }
