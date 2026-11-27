@@ -29,7 +29,7 @@ Upload any PDF, read it in the browser and ask questions about it. Every answer 
 
 | Area | Details |
 |:---|:---|
-| Upload first | Empty start screen, drag and drop, instant preview while the file is indexed in the background |
+| Upload first | Empty start screen, drag and drop, instant preview while the file is indexed in the background |. File names with dashes, accents or non-Latin text preview correctly after a refresh
 | Any PDF | Text PDFs, scans (OCR through Gemini vision, first 40 pages), no required `.pdf` extension, duplicates detected by SHA-256, clear errors for corrupt or password-protected files |
 | Study-friendly answers | Answer, explanation, key points, memory tip and sources in a fixed layout |
 | Tutor chat (default) | A conversation, not a form. It leads with the exact answer, then teaches from the basics in plain words, remembers earlier turns so "explain it simpler" or "what about the second one?" work, cites page links, and says so when the PDF does not cover something. Each reply suggests follow-up questions. Outside analogies are labelled as not from the document |

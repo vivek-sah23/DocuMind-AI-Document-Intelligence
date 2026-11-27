@@ -6,6 +6,7 @@ in src/ is unchanged and framework-free.
 """
 from __future__ import annotations
 
+from urllib.parse import quote
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -237,12 +238,17 @@ def document_file(doc_id: str):
     record = app.state.stack["manager"].get(doc_id)
     if path is None or record is None:
         raise HTTPException(status_code=404, detail="Preview not available for this document")
-    safe_name = record["doc_name"].replace('"', "").replace("\n", " ")
+    # Header values must be latin-1: names with dashes, accents or non-Latin
+    # scripts need an ASCII fallback plus an RFC 5987 filename* form, or the
+    # response fails with a 500 and the preview cannot load.
+    raw_name = record["doc_name"].replace('"', "").replace("\n", " ").replace("\r", " ")
+    ascii_name = raw_name.encode("ascii", "ignore").decode().strip() or "document.pdf"
+    disposition = f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(raw_name, safe='')}"
     return FileResponse(
         path,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{safe_name}"',
+            "Content-Disposition": disposition,
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, max-age=300",
         },

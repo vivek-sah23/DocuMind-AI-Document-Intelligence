@@ -187,6 +187,20 @@ def test_full_flow_against_tmp_stack(client, tmp_path, two_page_pdf):
         assert r.content == two_page_pdf
         assert 'filename="notes.pdf"' in r.headers["content-disposition"]
 
+        # Names with dashes/accents/non-Latin text must not break the preview (was a 500).
+        real_get = manager.get
+        def fancy_get(d):
+            rec = real_get(d)
+            return dict(rec, doc_name="Crash Guide \u2014 caf\u00e9 \u0939\u093f\u0928\u094d\u0926\u0940.pdf") if rec else rec
+        manager.get = fancy_get
+        try:
+            r = client.get(f"/api/documents/{doc_id}/file")
+            assert r.status_code == 200
+            assert "filename*=UTF-8''" in r.headers["content-disposition"]
+            assert r.content == two_page_pdf
+        finally:
+            manager.get = real_get
+
         r = client.delete(f"/api/documents/{doc_id}")
         assert r.status_code == 200
         assert client.get(f"/api/documents/{doc_id}/file").status_code == 404
