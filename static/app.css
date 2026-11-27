@@ -194,3 +194,18 @@ body { overflow: hidden; }
   .deep-toggle span { display: none; }
   .bubble { max-width: 92%; }
 }
+
+/* Tutor chat answers */
+.card.tutor .tutor-body { padding: 16px 18px 6px; font-size: 15.5px; line-height: 1.65; overflow-wrap: anywhere; }
+.card.tutor .tutor-body > * + * { margin-top: 10px; }
+.card.tutor .tutor-body p { margin: 0; }
+.card.tutor .md-h { margin: 16px 0 2px; font-size: 15px; font-weight: 700; letter-spacing: -.005em; }
+.card.tutor .md-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 5px; }
+.card.tutor ul.md-list { list-style: disc; }
+.card.tutor ol.md-list { list-style: decimal; }
+.card.tutor .md-list li::marker { color: var(--muted); font-weight: 600; }
+.card.tutor hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.card.tutor code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+.card.tutor .sec-label { margin-bottom: 6px; }
+.followups { padding: 4px 18px 14px; }
+.followups .chip.fu { display: block; width: 100%; margin-top: 6px; font-size: 13.5px; }

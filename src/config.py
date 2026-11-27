@@ -45,6 +45,8 @@ class Settings:
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
     # Groq (OpenAI-compatible, very fast inference). Used first when a key is
     # set; Gemini stays as the automatic fallback.
+    # Stronger free Gemini model used for the tutor chat (falls back from Groq).
+    gemini_tutor_model: str = os.getenv("GEMINI_TUTOR_MODEL", "gemini-3.5-flash")
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     llm_temperature: float = 0.1
@@ -55,6 +57,12 @@ class Settings:
     deep_max_chunks: int = field(default_factory=lambda: _int_env("DEEP_MAX_CHUNKS", 18))
     deep_min_score: float = field(default_factory=lambda: _float_env("DEEP_MIN_SCORE", 0.2))
     deep_max_output_tokens: int = 3500
+    # Tutor chat: reasoning tokens count against this on gpt-oss, so keep headroom.
+    tutor_max_output_tokens: int = 6000
+    tutor_history_turns: int = 8
+    # Groq free tier allows 8k tokens a minute; keep the tutor context lean.
+    tutor_top_k: int = 7
+    tutor_max_chunks: int = 12
 
     # Embeddings. all-MiniLM-L6-v2 truncates input at 256 word-pieces,
     # so chunks are sized well below that using the model's own tokenizer.

@@ -11,12 +11,47 @@ import re
 import time
 
 from .llm import REFUSAL_TEXT, LLMUnavailableError, format_context, parse_structured
+from .config import settings
 from .retriever import Retriever
 from .utils import get_logger, redact
 
 logger = get_logger(__name__)
 
 _PASSAGE_REF = re.compile(r"\[Passage\s+(\d+)\]", re.IGNORECASE)
+
+
+_FOLLOW_MARK = re.compile(r"-{2,}\s*FOLLOW-?UPS?\s*-{2,}", re.IGNORECASE)
+
+
+_ODD_CITE = re.compile(r"[\u3010\[(]\s*Passages?\s+(\d+)\s*[\u3011\])]", re.IGNORECASE)
+
+
+_MULTI_CITE = re.compile(r"\[\s*Passages?\s+(\d+(?:\s*(?:,|and|&)\s*(?:Passages?\s+)?\d+)+)\s*\]", re.IGNORECASE)
+
+
+def _split_multi(m: re.Match) -> str:
+    nums = re.findall(r"\d+", m.group(1))
+    return "".join(f"[Passage {n}]" for n in nums)
+
+
+def parse_tutor(raw: str) -> dict:
+    """Split the tutor reply into answer text, control tokens and follow-ups."""
+    text = (raw or "").strip()
+    text = _ODD_CITE.sub(lambda m: f"[Passage {m.group(1)}]", text)
+    text = _MULTI_CITE.sub(_split_multi, text)
+    not_in_pdf = "[[NOT_IN_PDF]]" in text
+    chat = "[[CHAT]]" in text
+    text = text.replace("[[NOT_IN_PDF]]", "").replace("[[CHAT]]", "").strip()
+    follow_ups: list[str] = []
+    parts = _FOLLOW_MARK.split(text, maxsplit=1)
+    text = parts[0].strip()
+    if len(parts) == 2:
+        for line in parts[1].splitlines():
+            q = re.sub(r"^\s*(?:[-*\u2022]|\d+[.)])\s*", "", line).strip()
+            if q and len(q) <= 200:
+                follow_ups.append(q)
+    return {"answer": text, "follow_ups": follow_ups[:3],
+            "not_in_pdf": not_in_pdf, "chat": chat}
 
 
 class RAGPipeline:
@@ -151,6 +186,62 @@ class RAGPipeline:
             "citations": citations,
             "refused": False,
             "pages": sorted({c["page_number"] for c in citations}),
+            "provider": provider,
+            "latency_ms": self._ms(started),
+        }
+
+    def tutor_answer(self, question: str, history: list[dict] | None = None,
+                     doc_id: str | None = None) -> dict:
+        """Conversational tutor reply: remembers earlier turns, retrieves
+        with a follow-up-aware query, answers grounded in the document."""
+        started = time.perf_counter()
+        question = question.strip()
+        base = {"mode": "tutor", "citations": [], "follow_ups": [], "refused": False}
+        if not question:
+            return {**base, "answer": "Ask a question about your uploaded documents.",
+                    "refused": True, "latency_ms": 0}
+        history = [h for h in (history or []) if h.get("text")][-settings.tutor_history_turns:]
+
+        query = question
+        if history:
+            try:
+                rewritten = self.generator.rewrite_query(question, history).strip().strip('"')
+                if 3 <= len(rewritten) <= 400:
+                    query = rewritten
+            except LLMUnavailableError:
+                raise
+            except Exception as exc:
+                logger.warning("Query rewrite failed: %s", redact(exc))
+        kw = {"top_k": settings.tutor_top_k, "max_chunks": settings.tutor_max_chunks}
+        hits = self.retriever.retrieve_deep(query, doc_id=doc_id, **kw)
+        if not hits and query != question:
+            hits = self.retriever.retrieve_deep(question, doc_id=doc_id, **kw)
+        context = (format_context(hits) if hits
+                   else "<context>\n(no passages from the document matched this message)\n</context>")
+        try:
+            raw = self.generator.generate_tutor(question, context, history)
+        except LLMUnavailableError:
+            raise
+        except Exception as exc:
+            logger.error("Tutor generation failed: %s", redact(exc))
+            raise LLMUnavailableError("Answer generation failed") from None
+        provider = getattr(self.generator, "last_provider", None)
+        parsed = parse_tutor(raw)
+        if not parsed["answer"]:
+            return {**base, "answer": "I could not put an answer together. Please try rephrasing.",
+                    "refused": True, "provider": provider, "latency_ms": self._ms(started)}
+        citations = []
+        if not parsed["chat"] and hits:
+            citations = self._resolve_citations(parsed["answer"], hits, fallback=False)
+            citations.sort(key=lambda c: (c["doc_name"], c["page_number"], c["passage"]))
+        return {
+            "mode": "tutor",
+            "answer": parsed["answer"],
+            "follow_ups": parsed["follow_ups"],
+            "citations": citations,
+            "pages": sorted({c["page_number"] for c in citations}),
+            "refused": parsed["not_in_pdf"],
+            "chat": parsed["chat"],
             "provider": provider,
             "latency_ms": self._ms(started),
         }

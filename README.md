@@ -32,10 +32,11 @@ Upload any PDF, read it in the browser and ask questions about it. Every answer 
 | Upload first | Empty start screen, drag and drop, instant preview while the file is indexed in the background |
 | Any PDF | Text PDFs, scans (OCR through Gemini vision, first 40 pages), no required `.pdf` extension, duplicates detected by SHA-256, clear errors for corrupt or password-protected files |
 | Study-friendly answers | Answer, explanation, key points, memory tip and sources in a fixed layout |
-| Deep dive (default) | Ask for a topic and get a full briefing: overview, step by step sections, key takeaways, memory tip and what the PDF does not cover. Retrieval is wider, pulls in the neighbouring passages and reads them in page order. Switch to quick answers with the toggle, or tap "Explain in depth" on any quick answer |
+| Tutor chat (default) | A conversation, not a form. It leads with the exact answer, then teaches from the basics in plain words, remembers earlier turns so "explain it simpler" or "what about the second one?" work, cites page links, and says so when the PDF does not cover something. Each reply suggests follow-up questions. Outside analogies are labelled as not from the document |
+| Deep dive | Ask for a topic and get a full briefing: overview, step by step sections, key takeaways, memory tip and what the PDF does not cover. Retrieval is wider, pulls in the neighbouring passages and reads them in page order. Turn on the Deep dive toggle for a structured briefing on a topic |
 | Audio briefing | "Listen" reads any answer aloud next to the written chat answer, with stop and speed controls. "Voice" auto-reads every new answer. Uses the browser's built-in speech synthesis: free, no key, nothing sent to a server |
 | Accurate citations | Chunks never cross a page boundary. The model only sees `[Passage N]` labels, and page numbers come from stored metadata, never from the model |
-| Fast | Groq `openai/gpt-oss-120b` (about 0.7 s per answer) with automatic Gemini fallback |
+| Free models, automatic fallback | Groq `openai/gpt-oss-120b` first (about 1 to 2 s), then Gemini `gemini-3.5-flash`, then Groq `gpt-oss-20b`. Groq's free tier allows 8,000 tokens a minute, so busy minutes fall through to the next model |
 | Safe by design | Retrieved text is treated as data (prompt-injection resistant), JSON-only persistence (no pickle), rate limits, API keys read from environment variables only and redacted from logs |
 | Responsive | Side-by-side layout on desktop, PDF and Chat tabs on phones and tablets, no horizontal overflow |
 | Multi-document | Switch between uploaded PDFs, search one or all, remove any file |
@@ -95,6 +96,7 @@ All settings are environment variables, read once in `src/config.py`.
 | `MIN_SIMILARITY_SCORE` | `0.25` | Below this the app refuses instead of guessing |
 | `DEEP_TOP_K` / `DEEP_MAX_CHUNKS` | `10` / `18` | Best matches and total passages in deep dive |
 | `DEEP_MIN_SCORE` | `0.2` | Relevance floor for deep dive |
+| `GEMINI_TUTOR_MODEL` | `gemini-3.5-flash` | Gemini model for the tutor chat |
 | `MAX_FILE_SIZE_MB` | `50` | Upload limit |
 
 ## API
@@ -108,7 +110,7 @@ All settings are environment variables, read once in `src/config.py`.
 | `GET` | `/api/documents/{id}/status` | `indexing`, `ready` (with the document record) or `failed` (with a reason) |
 | `GET` | `/api/documents/{id}/file` | The original PDF, for the viewer |
 | `DELETE` | `/api/documents/{id}` | Remove a document, its vectors and its stored file |
-| `POST` | `/api/chat` | `{question, doc_id?, mode?}`. `mode` is `quick` (default) or `deep`. Quick returns answer, explanation, key points, memory tip and citations. Deep returns title, overview, sections, key points, memory tip, gaps, pages and citations |
+| `POST` | `/api/chat` | `{question, doc_id?, mode?, history?}`. `mode` is `tutor` (default), `deep` or `quick`. Tutor takes `history` (up to 12 recent `{role, text}` turns) and returns `answer` (Markdown), `follow_ups`, `citations`, `pages`, `refused` and `chat`. Quick returns answer, explanation, key points, memory tip and citations. Deep returns title, overview, sections, key points, memory tip, gaps, pages and citations |
 
 ## Project structure
 
@@ -126,7 +128,7 @@ src/
   rag_pipeline.py      Retrieval, generation, citation validation
   document_manager.py  Registry, SHA-256 dedupe, deletion, stored PDFs
 static/                Landing page, app, styles, scripts
-tests/                 81 tests
+tests/                 95 tests
 render.yaml            Render blueprint
 ```
 
@@ -163,6 +165,7 @@ Render free plan, configured by `render.yaml`:
 - **Shared demo.** The hosted demo has no accounts, so uploads are visible to every visitor. Use public or sample PDFs only.
 - **Ephemeral storage.** On the free plan, uploads and the index reset when the service restarts or redeploys.
 - **OCR budget.** Scanned PDFs are read up to the first 40 pages to stay inside the free Gemini quota.
+- **Tutor quality.** The free models are strong but not frontier-level. Answers are grounded in the retrieved passages only, so a very broad question can miss a detail that sits on a page the search did not pick up. Ask again with a narrower topic. The tutor remembers the last few turns of the open chat only, and the history lives in the browser tab.
 - **Audio.** Listen and Voice depend on the browser's speech voices, so the voice differs per device. Deep dive answers are limited to what the retrieved passages say, so a very broad topic may need a follow-up question.
 - **Cold start.** The free service sleeps when idle and takes about a minute to wake.
 - **Threshold.** 0.25 is a reasonable starting point for MiniLM cosine scores. Tune it on your own documents.

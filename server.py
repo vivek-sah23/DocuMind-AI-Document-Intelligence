@@ -114,10 +114,16 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+class HistoryTurn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    text: str = Field(max_length=3000)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     doc_id: str | None = None
-    mode: str = Field(default="quick", pattern="^(quick|deep)$")
+    mode: str = Field(default="tutor", pattern="^(tutor|quick|deep)$")
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=12)
 
 
 @app.get("/", include_in_schema=False)
@@ -276,6 +282,12 @@ def chat(request: ChatRequest, http: Request):
         )
     try:
         pipeline = app.state.stack["pipeline"]
+        if request.mode == "tutor":
+            return pipeline.tutor_answer(
+                request.question,
+                [h.model_dump() for h in request.history],
+                doc_id=request.doc_id,
+            )
         if request.mode == "deep":
             return pipeline.deep_answer(request.question, doc_id=request.doc_id)
         return pipeline.answer(request.question, doc_id=request.doc_id)

@@ -4,7 +4,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
-  var state = { items: [], activeKey: null, scope: "doc", deep: true, voice: false, busy: false, zoom: 1, page: 1, pdf: null, loadId: 0, seq: 0 };
+  var state = { items: [], activeKey: null, scope: "doc", deep: false, voice: false, busy: false, zoom: 1, page: 1, pdf: null, loadId: 0, seq: 0 };
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -426,9 +426,9 @@
       intro.appendChild(pr);
     } else if (!it.thread.querySelector(".msg")) {
       intro.appendChild(el("h3", null, "Ask anything about " + trimName(it.name)));
-      intro.appendChild(el("p", null, "Answers come with an explanation, a memory tip and page links. Ask for any topic and get the whole idea, step by step. Tap Listen to hear it read aloud."));
+      intro.appendChild(el("p", null, "Chat like you would with a tutor. It explains from the basics, pinpoints exact details with page links, remembers what you asked, and says so when the PDF does not cover something. Tap Listen to hear any answer."));
       var chips = el("div", "chips");
-      ["Explain the main topic of this document", "Summarize this document", "What should I remember for an exam?"].forEach(function (q) {
+      ["Explain the main idea of this document from the basics", "Summarize this document", "What should I remember for an exam?"].forEach(function (q) {
         var c = el("button", "chip", q);
         c.type = "button";
         c.addEventListener("click", function () { ask(q); });
@@ -464,7 +464,7 @@
   deepBtn.addEventListener("click", function () {
     state.deep = !state.deep;
     renderInput();
-    toast(state.deep ? "Deep dive on: full briefings from across the PDF." : "Quick answers on: short answers with a memory tip.");
+    toast(state.deep ? "Deep dive on: every answer is a full structured briefing." : "Tutor chat on: a conversation that remembers what you asked.");
     input.focus({ preventScroll: true });
   });
   function renderInput() {
@@ -483,7 +483,7 @@
   }
 
   function inline(parent, text, byPassage) {
-    String(text).split(/(\[Passage\s+\d+\]|\*\*[^*]+\*\*)/g).forEach(function (part) {
+    String(text).split(/(\[Passage\s+\d+\]|\*\*[^*]+\*\*|`[^`\n]+`|\*[^*\s][^*\n]*\*)/g).forEach(function (part) {
       if (!part) return;
       var m = /^\[Passage\s+(\d+)\]$/.exec(part);
       if (m) {
@@ -496,17 +496,79 @@
         parent.appendChild(pill);
       } else if (/^\*\*[^*]+\*\*$/.test(part)) {
         parent.appendChild(el("strong", null, part.slice(2, -2)));
+      } else if (/^`[^`\n]+`$/.test(part)) {
+        parent.appendChild(el("code", null, part.slice(1, -1)));
+      } else if (/^\*[^*\s][^*\n]*\*$/.test(part)) {
+        parent.appendChild(el("em", null, part.slice(1, -1)));
       } else parent.appendChild(document.createTextNode(part));
     });
   }
+  /* Small, safe Markdown renderer for tutor answers (DOM nodes only, no innerHTML). */
+  function mdBlocks(parent, text, byPassage) {
+    var lines = String(text).replace(/\r/g, "").split("\n"), i = 0, para = [], list = null;
+    function flushPara() {
+      if (!para.length) return;
+      var p = el("p"); inline(p, para.join(" "), byPassage); parent.appendChild(p); para = [];
+    }
+    function flushList() { if (list) { parent.appendChild(list.node); list = null; } }
+    for (; i < lines.length; i++) {
+      var ln = lines[i], t = ln.trim(), m;
+      if (!t) { flushPara(); flushList(); continue; }
+      if (/^(-{3,}|\*{3,})$/.test(t)) { flushPara(); flushList(); parent.appendChild(el("hr")); continue; }
+      if ((m = /^(#{1,4})\s+(.*)$/.exec(t))) {
+        flushPara(); flushList();
+        var h = el("h5", "md-h"); inline(h, m[2], byPassage); parent.appendChild(h); continue;
+      }
+      var b = /^[-*\u2022]\s+(.*)$/.exec(t), n = /^(\d+)[.)]\s+(.*)$/.exec(t);
+      if (b || n) {
+        flushPara();
+        var kind = n ? "ol" : "ul";
+        if (!list || list.kind !== kind) { flushList(); list = { kind: kind, node: el(kind, "md-list") }; if (n && n[1] !== "1") list.node.start = parseInt(n[1], 10); }
+        var li = el("li"); inline(li, b ? b[1] : n[2], byPassage); list.node.appendChild(li);
+        continue;
+      }
+      if (list && /^\s{2,}/.test(ln) && list.node.lastChild) { inline(list.node.lastChild, " " + t, byPassage); continue; }
+      flushList();
+      para.push(t);
+    }
+    flushPara(); flushList();
+  }
+
+  function renderTutor(res, question) {
+    var wrap = el("div", "msg bot");
+    var card = el("div", "card tutor" + (res.refused ? " refused" : ""));
+    var byPassage = {};
+    (res.citations || []).forEach(function (c) { byPassage[c.passage] = c; });
+    var body = el("div", "tutor-body");
+    if (res.refused) body.appendChild(el("div", "sec-label", "Not in the document"));
+    mdBlocks(body, res.answer, byPassage);
+    card.appendChild(body);
+    appendSources(card, res);
+    if (res.follow_ups && res.follow_ups.length) {
+      var fu = el("div", "followups");
+      fu.appendChild(el("div", "sec-label", "Keep going"));
+      res.follow_ups.forEach(function (q) {
+        var b = el("button", "chip fu", q);
+        b.type = "button";
+        b.addEventListener("click", function () { ask(q); });
+        fu.appendChild(b);
+      });
+      card.appendChild(fu);
+    }
+    appendMeta(card, res);
+    wrap.appendChild(card);
+    return wrap;
+  }
+
   function section(cls, label) { var s = el("div", "sec " + cls); s.appendChild(el("div", "sec-label", label)); return s; }
 
   /* ---------- audio briefing (browser speech synthesis, free, no keys) ---------- */
   var tts = window.speechSynthesis || null;
   var speaking = { btn: null, rate: 1 };
-  function plain(t) { return String(t || "").replace(/\[Passage\s+\d+\]/gi, "").replace(/\*\*/g, "").replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").trim(); }
+  function plain(t) { return String(t || "").replace(/\[Passage\s+\d+\]/gi, "").replace(/^\s{0,3}#{1,4}\s+/gm, "").replace(/^\s*([-*\u2022]|\d+[.)])\s+/gm, "").replace(/^-{3,}$/gm, "").replace(/[`*]/g, "").replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").trim(); }
   function narration(res) {
     var parts = [];
+    if (res.mode === "tutor") return plain(res.answer);
     if (res.title) parts.push(plain(res.title) + ".");
     parts.push(plain(res.answer));
     if (res.explanation) parts.push(plain(res.explanation));
@@ -653,6 +715,7 @@
   }
 
   function renderAnswer(res, question) {
+    if (res.mode === "tutor") return renderTutor(res, question);
     if (res.mode === "deep" && !res.refused) return renderDeep(res, question);
     var wrap = el("div", "msg bot");
     var card = el("div", "card" + (res.refused ? " refused" : ""));
@@ -685,9 +748,10 @@
     s.appendChild(el("div", "text", text)); card.appendChild(s); wrap.appendChild(card);
     return wrap;
   }
-  function typingNode(deep) {
+  function typingNode(mode) {
     var wrap = el("div", "msg bot"), card = el("div", "card typing");
-    if (deep) { card.classList.add("with-label"); card.appendChild(el("span", "typing-label", "Reading across the whole PDF\u2026")); }
+    var label = mode === "deep" ? "Reading across the whole PDF\u2026" : mode === "tutor" ? "Reading the PDF and thinking\u2026" : "";
+    if (label) { card.classList.add("with-label"); card.appendChild(el("span", "typing-label", label)); }
     card.setAttribute("aria-label", "Thinking");
     card.appendChild(el("i")); card.appendChild(el("i")); card.appendChild(el("i"));
     wrap.appendChild(card);
@@ -699,18 +763,20 @@
     var it = active();
     if (!question || state.busy || !it || it.status !== "ready") return;
     if (it.introEl) { it.introEl.remove(); it.introEl = null; }
-    var mode = forceMode || (state.deep ? "deep" : "quick");
+    var mode = forceMode || (state.deep ? "deep" : "tutor");
+    it.history = it.history || [];
     var u = el("div", "msg user");
     u.appendChild(el("div", "bubble", (mode === "deep" ? "Deep dive: " : "") + question));
     var thread = it.thread;
     thread.appendChild(u);
-    var typing = typingNode(mode === "deep");
+    var typing = typingNode(mode);
     thread.appendChild(typing);
     messages.scrollTop = messages.scrollHeight;
     input.value = ""; autosize();
     state.busy = true; renderInput();
 
     var payload = { question: question, mode: mode };
+    if (mode === "tutor") payload.history = it.history.slice(-8);
     if (state.scope === "doc" || readyItems().length < 2) payload.doc_id = it.key;
     fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
@@ -720,7 +786,14 @@
         if (!res.ok) {
           var d = res.body && res.body.detail;
           node = renderError(typeof d === "string" ? d : "Something went wrong. Please try again.");
-        } else node = renderAnswer(res.body, question);
+        } else {
+          node = renderAnswer(res.body, question);
+          if (mode === "tutor" && res.body && res.body.answer) {
+            it.history.push({ role: "user", text: question.slice(0, 1500) });
+            it.history.push({ role: "assistant", text: String(res.body.answer).replace(/\[Passage\s+\d+\]/g, "").slice(0, 2500) });
+            if (it.history.length > 12) it.history = it.history.slice(-12);
+          }
+        }
         thread.appendChild(node);
         if (state.voice && res.ok) { var lb = node.querySelector(".listen-btn"); if (lb) lb.click(); }
         if (thread.parentNode === messages) messages.scrollTop = Math.max(0, node.offsetTop - 14);
