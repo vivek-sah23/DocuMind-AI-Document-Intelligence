@@ -705,6 +705,7 @@
       var fu = el("div", "followups");
       fu.appendChild(el("div", "sec-label", "Keep going"));
       res.follow_ups.forEach(function (q) {
+        q = String(q).replace(/[`*]/g, "");
         var b = el("button", "chip fu", q);
         b.type = "button";
         b.addEventListener("click", function () { ask(q); });
