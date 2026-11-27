@@ -11,6 +11,7 @@ Correction history:
 from __future__ import annotations
 
 import json
+import re
 import time
 
 import httpx
@@ -152,6 +153,31 @@ the student might naturally ask next, each answerable from this document:
 - third question
 """
 
+MATH_STYLE = """
+
+Formulas and symbols
+- Write every formula in standard LaTeX between dollar signs: $...$ inline,
+  or $$...$$ on its own line for an important formula. Never use \\[ \\],
+  \\( \\), \\boxed, code blocks or plain-text pseudo-math for formulas.
+- Keep formulas clean: no \\Big/\\left sizing tricks, use \\frac, \\times,
+  \\lfloor \\rfloor and \\text{...} for words.
+- Right after a formula, list what each symbol means in plain words, one per
+  bullet, with its symbol in $...$.
+- Give a tiny worked example with real numbers when the document supports it.
+- Do not put [Passage N] inside a formula; put it after the sentence.
+"""
+
+TUTOR_STYLE = """
+
+Look and feel
+- Start directly with the answer. Do not begin with a label such as "Answer:".
+- Use short paragraphs of 1 to 3 sentences. Put blank lines between blocks.
+- Use "### Heading" for each part of a longer answer, bullets for parallel
+  items, and numbered lists only for real steps. Bold only key terms.
+- Never write a citation as a range or list like [Passage 1-2, 11]; use one
+  tag per passage: [Passage 1][Passage 2].
+"""
+
 REWRITE_SYSTEM_INSTRUCTION = """Rewrite the student's latest message as one standalone search query
 for finding the answer in a document. Use the conversation to replace
 pronouns and vague references ("it", "that part", "explain more") with the
@@ -163,6 +189,15 @@ REFUSAL_TEXT = (
     "The uploaded document(s) do not contain sufficient information "
     "to answer this question."
 )
+
+
+MATH_JSON_NOTE = (
+    "- Your reply is JSON, so double every backslash inside JSON strings "
+    "(write \\\\frac, not \\frac).\n"
+)
+SYSTEM_INSTRUCTION += MATH_STYLE + MATH_JSON_NOTE
+DEEP_SYSTEM_INSTRUCTION += MATH_STYLE + MATH_JSON_NOTE
+TUTOR_SYSTEM_INSTRUCTION += MATH_STYLE + TUTOR_STYLE
 
 
 class LLMUnavailableError(RuntimeError):
@@ -472,5 +507,29 @@ def parse_structured(raw: str) -> dict | None:
     try:
         data = json.loads(text)
     except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
+        # LaTeX backslashes are invalid JSON escapes; double the stray ones.
+        try:
+            data = json.loads(re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", text))
+        except ValueError:
+            return None
+    return _fix_tex(data) if isinstance(data, dict) else None
+
+
+_TEX_CONTROL_FIXES = (
+    ("\x0crac", "\\frac"), ("\x0cloor", "\\lfloor"),
+    ("\times", "\\times"), ("\text", "\\text"), ("\x08eta", "\\beta"),
+    ("\x08oxed", "\\boxed"), ("\x08ig", "\\big"), ("\right", "\\right"),
+)
+
+
+def _fix_tex(value):
+    """Undo JSON turning \\frac, \\times, \\text into control characters."""
+    if isinstance(value, str):
+        for bad, good in _TEX_CONTROL_FIXES:
+            value = value.replace(bad, good)
+        return value
+    if isinstance(value, list):
+        return [_fix_tex(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _fix_tex(v) for k, v in value.items()}
+    return value

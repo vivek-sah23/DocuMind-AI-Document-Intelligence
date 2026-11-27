@@ -91,3 +91,20 @@ def test_llm_error_propagates():
     except LLMUnavailableError:
         return
     raise AssertionError("expected LLMUnavailableError")
+
+
+def test_parse_tutor_expands_citation_ranges_and_strips_boxed():
+    out = parse_tutor(
+        "Output is \\boxed{O = \\Big\\lfloor x \\Big\\rfloor + 1} here [Passage 1-2, 4]. Also [Passages 3 and 5]."
+    )["answer"]
+    assert "[Passage 1][Passage 2][Passage 4]" in out
+    assert "[Passage 3][Passage 5]" in out
+    assert "boxed" not in out and "Big" not in out
+    assert "O = \\lfloor x \\rfloor + 1" in out
+
+
+def test_parse_structured_repairs_latex_backslashes():
+    from src.llm import parse_structured
+    raw = '{"answer": "Use $\\frac{N}{S}$ and $\\times$ and \\lfloor x \\rfloor"}'
+    got = parse_structured(raw)["answer"]
+    assert "\\frac{N}{S}" in got and "\\times" in got and "\\lfloor" in got

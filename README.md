@@ -33,6 +33,8 @@ Upload any PDF, read it in the browser and ask questions about it. Every answer 
 | Any PDF | Text PDFs, scans (OCR through Gemini vision, first 40 pages), no required `.pdf` extension, duplicates detected by SHA-256, clear errors for corrupt or password-protected files |
 | Study-friendly answers | Answer, explanation, key points, memory tip and sources in a fixed layout |
 | Tutor chat (default) | A conversation, not a form. It leads with the exact answer, then teaches from the basics in plain words, remembers earlier turns so "explain it simpler" or "what about the second one?" work, cites page links, and says so when the PDF does not cover something. Each reply suggests follow-up questions. Outside analogies are labelled as not from the document |
+| Readable formulas | Formulas are typeset as proper math (KaTeX, loaded from a free CDN) with a plain-notation fallback, never raw LaTeX. Citation lists such as "Passage 1-2, 11" are expanded into page pills |
+| Saved chats | Each PDF keeps its own chat in your browser (localStorage), so it survives a reload and switching between PDFs. Nothing is stored on the server, and removing a PDF deletes its saved chat |
 | Deep dive | Ask for a topic and get a full briefing: overview, step by step sections, key takeaways, memory tip and what the PDF does not cover. Retrieval is wider, pulls in the neighbouring passages and reads them in page order. Turn on the Deep dive toggle for a structured briefing on a topic |
 | Audio briefing | "Listen" reads any answer aloud next to the written chat answer, with stop and speed controls. "Voice" auto-reads every new answer. Uses the browser's built-in speech synthesis: free, no key, nothing sent to a server |
 | Accurate citations | Chunks never cross a page boundary. The model only sees `[Passage N]` labels, and page numbers come from stored metadata, never from the model |
@@ -165,7 +167,7 @@ Render free plan, configured by `render.yaml`:
 - **Shared demo.** The hosted demo has no accounts, so uploads are visible to every visitor. Use public or sample PDFs only.
 - **Ephemeral storage.** On the free plan, uploads and the index reset when the service restarts or redeploys.
 - **OCR budget.** Scanned PDFs are read up to the first 40 pages to stay inside the free Gemini quota.
-- **Tutor quality.** The free models are strong but not frontier-level. Answers are grounded in the retrieved passages only, so a very broad question can miss a detail that sits on a page the search did not pick up. Ask again with a narrower topic. The tutor remembers the last few turns of the open chat only, and the history lives in the browser tab.
+- **Tutor quality.** The free models are strong but not frontier-level. Answers are grounded in the retrieved passages only, so a very broad question can miss a detail that sits on a page the search did not pick up. Ask again with a narrower topic. The tutor sends only the last few turns to the model. Saved chats live in this browser only (up to 40 exchanges per PDF), so they do not follow you to another device or browser, and clearing site data erases them.
 - **Audio.** Listen and Voice depend on the browser's speech voices, so the voice differs per device. Deep dive answers are limited to what the retrieved passages say, so a very broad topic may need a follow-up question.
 - **Cold start.** The free service sleeps when idle and takes about a minute to wake.
 - **Threshold.** 0.25 is a reasonable starting point for MiniLM cosine scores. Tune it on your own documents.

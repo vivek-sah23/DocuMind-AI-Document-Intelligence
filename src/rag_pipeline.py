@@ -23,22 +23,56 @@ _PASSAGE_REF = re.compile(r"\[Passage\s+(\d+)\]", re.IGNORECASE)
 _FOLLOW_MARK = re.compile(r"-{2,}\s*FOLLOW-?UPS?\s*-{2,}", re.IGNORECASE)
 
 
-_ODD_CITE = re.compile(r"[\u3010\[(]\s*Passages?\s+(\d+)\s*[\u3011\])]", re.IGNORECASE)
+_CITE_GROUP = re.compile(
+    r"[\u3010\[(]\s*Passages?\s+([0-9][0-9\s,;&\-\u2013\u2014]*(?:(?:and|Passages?)\s*[0-9][0-9\s,;&\-\u2013\u2014]*)*)[\u3011\])]",
+    re.IGNORECASE,
+)
 
 
-_MULTI_CITE = re.compile(r"\[\s*Passages?\s+(\d+(?:\s*(?:,|and|&)\s*(?:Passages?\s+)?\d+)+)\s*\]", re.IGNORECASE)
+def _expand_refs(spec: str) -> list[int]:
+    """Turn '1-2, 11' or '3 and 5' into [1, 2, 11] / [3, 5]."""
+    nums: list[int] = []
+    for part in re.split(r"[,;&]|\band\b|passages?", spec, flags=re.IGNORECASE):
+        part = part.strip()
+        if not part:
+            continue
+        m = re.fullmatch(r"(\d+)\s*[-\u2013\u2014]\s*(\d+)", part)
+        if m:
+            lo, hi = int(m.group(1)), int(m.group(2))
+            if lo <= hi <= lo + 20:
+                nums.extend(range(lo, hi + 1))
+                continue
+        nums.extend(int(n) for n in re.findall(r"\d+", part))
+    return nums
 
 
-def _split_multi(m: re.Match) -> str:
-    nums = re.findall(r"\d+", m.group(1))
-    return "".join(f"[Passage {n}]" for n in nums)
+def _split_cite(m: re.Match) -> str:
+    seen: list[int] = []
+    for n in _expand_refs(m.group(1)):
+        if n not in seen:
+            seen.append(n)
+    return "".join(f"[Passage {n}]" for n in seen)
+
+
+def _unbox(text: str) -> str:
+    """Drop \\boxed{...} wrappers (keeping the content) and TeX size hints."""
+    while True:
+        i = text.find("\\boxed{")
+        if i < 0:
+            break
+        j, depth = i + len("\\boxed{"), 1
+        while j < len(text) and depth:
+            depth += {"{": 1, "}": -1}.get(text[j], 0)
+            j += 1
+        text = text[:i] + text[i + len("\\boxed{"): j - 1] + text[j:]
+    return re.sub(r"\\(?:Big|big|Bigg|bigg)[lr]?(?![a-zA-Z])", "", text)
 
 
 def parse_tutor(raw: str) -> dict:
     """Split the tutor reply into answer text, control tokens and follow-ups."""
     text = (raw or "").strip()
-    text = _ODD_CITE.sub(lambda m: f"[Passage {m.group(1)}]", text)
-    text = _MULTI_CITE.sub(_split_multi, text)
+    text = _CITE_GROUP.sub(_split_cite, text)
+    text = _unbox(text)
     not_in_pdf = "[[NOT_IN_PDF]]" in text
     chat = "[[CHAT]]" in text
     text = text.replace("[[NOT_IN_PDF]]", "").replace("[[CHAT]]", "").strip()

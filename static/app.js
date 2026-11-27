@@ -135,6 +135,7 @@
     };
     var local = String(it.key).indexOf("l") === 0;
     it.removed = true;
+    try { localStorage.removeItem(STORE + it.key); } catch (e) {}
     if (local) { done(); return; }
     fetch("/api/documents/" + it.key, { method: "DELETE" }).then(done, done);
   }
@@ -199,8 +200,41 @@
     toast(msg);
   }
 
+  /* ---------- saved chats: kept per PDF in this browser only (localStorage) ---------- */
+  var STORE = "documind:chat:v1:";
+  function slimRes(res) {
+    var c = JSON.parse(JSON.stringify(res));
+    (c.citations || []).forEach(function (x) { if (x.text && x.text.length > 700) x.text = x.text.slice(0, 700) + "\u2026"; });
+    return c;
+  }
+  function saveChat(it) {
+    if (!it || String(it.key).indexOf("l") === 0) return;
+    var log = (it.log || []).slice(-40);
+    for (var tries = 0; tries < 6; tries++) {
+      try { localStorage.setItem(STORE + it.key, JSON.stringify({ entries: log, history: (it.history || []).slice(-12) })); return; }
+      catch (e) { log = log.slice(Math.ceil(log.length / 2)); if (!log.length) return; }
+    }
+  }
+  function userBubble(question, mode) {
+    var u = el("div", "msg user");
+    u.appendChild(el("div", "bubble", (mode === "deep" ? "Deep dive: " : "") + question));
+    return u;
+  }
+  function restoreChat(it) {
+    if (!it || it.restored || String(it.key).indexOf("l") === 0) return;
+    it.restored = true;
+    var data = null;
+    try { data = JSON.parse(localStorage.getItem(STORE + it.key) || "null"); } catch (e) {}
+    if (!data || !data.entries) return;
+    it.log = data.entries; it.history = data.history || [];
+    it.log.forEach(function (e) {
+      try { it.thread.appendChild(userBubble(e.q, e.mode)); it.thread.appendChild(renderAnswer(e.res, e.q)); } catch (err) {}
+    });
+  }
+
   function markReady(it, doc) {
     it.status = "ready"; it.doc = doc;
+    restoreChat(it);
     if (it.name !== doc.doc_name) it.name = doc.doc_name;
     if (state.activeKey === it.key) {
       $("pv-total").textContent = doc.page_count;
@@ -246,7 +280,9 @@
     return fetch("/api/documents").then(function (r) { return r.json(); }).then(function (data) {
       (data.documents || []).forEach(function (d) {
         if (byKey(d.doc_id)) return;
-        state.items.push({ key: d.doc_id, name: d.doc_name, status: "ready", doc: d, buf: null, blobUrl: null, thread: el("div", "thread"), introEl: null });
+        var ni = { key: d.doc_id, name: d.doc_name, status: "ready", doc: d, buf: null, blobUrl: null, thread: el("div", "thread"), introEl: null };
+        state.items.push(ni);
+        restoreChat(ni);
       });
       if (state.items.length) {
         var saved = null;
@@ -482,30 +518,106 @@
     input.placeholder = !it ? "Ask about this PDF" : it.status === "ready" ? "Ask about " + trimName(it.name) : it.status === "failed" ? "This PDF could not be read" : "Reading the PDF\u2026";
   }
 
+  /* ---------- math: KaTeX when loaded, readable plain notation otherwise ---------- */
+  var MATHS = [], pendingMath = [];
+  var MATH_RE = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|(?<!\\)\$(?=[^\s$])([^$\n]+?)(?<=[^\s$\\])\$(?!\d)/g;
+  function cleanTex(t) {
+    t = String(t).trim();
+    var i;
+    while ((i = t.indexOf("\\boxed{")) >= 0) {
+      var j = i + 7, d = 1;
+      while (j < t.length && d) { d += t[j] === "{" ? 1 : t[j] === "}" ? -1 : 0; j++; }
+      t = t.slice(0, i) + t.slice(i + 7, j - 1) + t.slice(j);
+    }
+    return t.replace(/\\(?:Big|big|Bigg|bigg)[lr]?(?![a-zA-Z])/g, "").replace(/\\(?:displaystyle|;|,|!|quad|qquad)/g, " ");
+  }
+  var SYM = { times: "\u00d7", cdot: "\u00b7", div: "\u00f7", pm: "\u00b1", le: "\u2264", leq: "\u2264", ge: "\u2265", geq: "\u2265", ne: "\u2260", neq: "\u2260", approx: "\u2248", infty: "\u221e", lfloor: "\u230a", rfloor: "\u230b", lceil: "\u2308", rceil: "\u2309", sum: "\u03a3", prod: "\u03a0", sqrt: "\u221a", alpha: "\u03b1", beta: "\u03b2", gamma: "\u03b3", delta: "\u03b4", Delta: "\u0394", epsilon: "\u03b5", theta: "\u03b8", lambda: "\u03bb", mu: "\u03bc", pi: "\u03c0", sigma: "\u03c3", Sigma: "\u03a3", omega: "\u03c9", eta: "\u03b7", rightarrow: "\u2192", to: "\u2192", leftarrow: "\u2190", partial: "\u2202", nabla: "\u2207", log: "log", ln: "ln", exp: "exp", max: "max", min: "min" };
+  function texToPlain(t) {
+    t = cleanTex(t);
+    for (var k = 0; k < 4; k++) {
+      t = t.replace(/\\d?frac\{([^{}]*)\}\{([^{}]*)\}/g, function (m, x, y) { return "(" + x + ") / (" + y + ")"; });
+      t = t.replace(/\\(?:text|mathrm|mathbf|operatorname|mathit)\{([^{}]*)\}/g, "$1");
+      t = t.replace(/\\sqrt\{([^{}]*)\}/g, "\u221a($1)");
+    }
+    t = t.replace(/\\([a-zA-Z]+)/g, function (m, n) { return SYM[n] != null ? SYM[n] : n; });
+    t = t.replace(/_\{([^{}]*)\}/g, "_$1").replace(/\^\{([^{}]*)\}/g, "^$1").replace(/[{}]/g, "").replace(/\\/g, "").replace(/\s+/g, " ");
+    return t.trim();
+  }
+  function extractMath(text) {
+    return String(text).replace(MATH_RE, function (m, a, b, c, d) {
+      var tex = a != null ? a : b != null ? b : c != null ? c : d;
+      var display = a != null || b != null;
+      MATHS.push({ tex: cleanTex(tex), display: display });
+      return "\u0001" + (MATHS.length - 1) + "\u0002";
+    });
+  }
+  function paintMath(node, mj) {
+    if (window.katex) {
+      try {
+        window.katex.render(mj.tex, node, { displayMode: mj.display, throwOnError: true, strict: "ignore", trust: false });
+        node.classList.remove("math-plain");
+        return true;
+      } catch (e) { /* fall through to readable text */ }
+    }
+    node.textContent = texToPlain(mj.tex);
+    node.classList.add("math-plain");
+    return !!window.katex;
+  }
+  function mathNode(idx) {
+    var mj = MATHS[idx];
+    if (!mj) return document.createTextNode("");
+    var n = el("span", "math" + (mj.display ? " math-block" : ""));
+    if (!paintMath(n, mj)) pendingMath.push({ node: n, mj: mj });
+    return n;
+  }
+  function flushMath() {
+    if (!window.katex) return;
+    var list = pendingMath; pendingMath = [];
+    list.forEach(function (p) { paintMath(p.node, p.mj); });
+  }
+  window.addEventListener("load", function () { flushMath(); setTimeout(flushMath, 1500); setTimeout(flushMath, 4000); });
+
+  function citeNums(spec) {
+    var out = [];
+    String(spec).split(/[,;&]|\band\b|passages?/i).forEach(function (part) {
+      part = part.trim();
+      var r = /^(\d+)\s*[-\u2013\u2014]\s*(\d+)$/.exec(part);
+      if (r && +r[1] <= +r[2] && +r[2] - +r[1] <= 20) { for (var n = +r[1]; n <= +r[2]; n++) out.push(n); }
+      else (part.match(/\d+/g) || []).forEach(function (n) { out.push(+n); });
+    });
+    return out;
+  }
   function inline(parent, text, byPassage) {
-    String(text).split(/(\[Passage\s+\d+\]|\*\*[^*]+\*\*|`[^`\n]+`|\*[^*\s][^*\n]*\*)/g).forEach(function (part) {
+    text = extractMath(text);
+    String(text).split(/(\[Passages?\s+\d[^\]]*\]|\u0001\d+\u0002|\*\*[^*]+\*\*|`[^`\n]+`|\*[^*\s][^*\n]*\*)/g).forEach(function (part) {
       if (!part) return;
-      var m = /^\[Passage\s+(\d+)\]$/.exec(part);
+      var m = /^\[Passages?\s+(\d[^\]]*)\]$/.exec(part), mm = /^\u0001(\d+)\u0002$/.exec(part);
       if (m) {
-        var c = byPassage[parseInt(m[1], 10)];
-        if (!c) return;
-        var pill = el("button", "cite", "p." + c.page_number);
-        pill.type = "button";
-        pill.title = c.doc_name + ", page " + c.page_number;
-        pill.addEventListener("click", function () { openCitation(c); });
-        parent.appendChild(pill);
+        var seen = {};
+        citeNums(m[1]).forEach(function (num) {
+          var c = byPassage[num];
+          if (!c || seen[num]) return;
+          seen[num] = 1;
+          var pill = el("button", "cite", "p." + c.page_number);
+          pill.type = "button";
+          pill.title = c.doc_name + ", page " + c.page_number;
+          pill.addEventListener("click", function () { openCitation(c); });
+          parent.appendChild(pill);
+        });
+      } else if (mm) {
+        parent.appendChild(mathNode(+mm[1]));
       } else if (/^\*\*[^*]+\*\*$/.test(part)) {
-        parent.appendChild(el("strong", null, part.slice(2, -2)));
+        var st = el("strong"); inline(st, part.slice(2, -2), byPassage); parent.appendChild(st);
       } else if (/^`[^`\n]+`$/.test(part)) {
         parent.appendChild(el("code", null, part.slice(1, -1)));
       } else if (/^\*[^*\s][^*\n]*\*$/.test(part)) {
-        parent.appendChild(el("em", null, part.slice(1, -1)));
-      } else parent.appendChild(document.createTextNode(part));
+        var emn = el("em"); inline(emn, part.slice(1, -1), byPassage); parent.appendChild(emn);
+      } else parent.appendChild(document.createTextNode(part.replace(/\\\$/g, "$")));
     });
   }
   /* Small, safe Markdown renderer for tutor answers (DOM nodes only, no innerHTML). */
   function mdBlocks(parent, text, byPassage) {
-    var lines = String(text).replace(/\r/g, "").split("\n"), i = 0, para = [], list = null;
+    var lines = extractMath(String(text).replace(/\r/g, "")).split("\n"), i = 0, para = [], list = null;
     function flushPara() {
       if (!para.length) return;
       var p = el("p"); inline(p, para.join(" "), byPassage); parent.appendChild(p); para = [];
@@ -565,7 +677,7 @@
   /* ---------- audio briefing (browser speech synthesis, free, no keys) ---------- */
   var tts = window.speechSynthesis || null;
   var speaking = { btn: null, rate: 1 };
-  function plain(t) { return String(t || "").replace(/\[Passage\s+\d+\]/gi, "").replace(/^\s{0,3}#{1,4}\s+/gm, "").replace(/^\s*([-*\u2022]|\d+[.)])\s+/gm, "").replace(/^-{3,}$/gm, "").replace(/[`*]/g, "").replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").trim(); }
+  function plain(t) { return String(t || "").replace(MATH_RE, function (m, a, b, c, d) { return " " + texToPlain(a || b || c || d || "") + " "; }).replace(/\[Passages?\s+\d[^\]]*\]/gi, "").replace(/^\s{0,3}#{1,4}\s+/gm, "").replace(/^\s*([-*\u2022]|\d+[.)])\s+/gm, "").replace(/^-{3,}$/gm, "").replace(/[`*]/g, "").replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").trim(); }
   function narration(res) {
     var parts = [];
     if (res.mode === "tutor") return plain(res.answer);
@@ -765,10 +877,9 @@
     if (it.introEl) { it.introEl.remove(); it.introEl = null; }
     var mode = forceMode || (state.deep ? "deep" : "tutor");
     it.history = it.history || [];
-    var u = el("div", "msg user");
-    u.appendChild(el("div", "bubble", (mode === "deep" ? "Deep dive: " : "") + question));
+    it.log = it.log || [];
     var thread = it.thread;
-    thread.appendChild(u);
+    thread.appendChild(userBubble(question, mode));
     var typing = typingNode(mode);
     thread.appendChild(typing);
     messages.scrollTop = messages.scrollHeight;
@@ -788,11 +899,13 @@
           node = renderError(typeof d === "string" ? d : "Something went wrong. Please try again.");
         } else {
           node = renderAnswer(res.body, question);
+          it.log.push({ q: question, mode: mode, res: slimRes(res.body) });
           if (mode === "tutor" && res.body && res.body.answer) {
             it.history.push({ role: "user", text: question.slice(0, 1500) });
-            it.history.push({ role: "assistant", text: String(res.body.answer).replace(/\[Passage\s+\d+\]/g, "").slice(0, 2500) });
+            it.history.push({ role: "assistant", text: String(res.body.answer).replace(/\[Passages?\s+\d[^\]]*\]/g, "").slice(0, 2500) });
             if (it.history.length > 12) it.history = it.history.slice(-12);
           }
+          saveChat(it);
         }
         thread.appendChild(node);
         if (state.voice && res.ok) { var lb = node.querySelector(".listen-btn"); if (lb) lb.click(); }
