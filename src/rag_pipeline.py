@@ -116,11 +116,8 @@ class RAGPipeline:
         context = format_context(hits)
         try:
             raw_answer = self.generator.generate_answer(question, context)
-        except LLMUnavailableError as exc:
-            raise
-        except Exception as exc:  # defensive: never leak a stack to the UI
-            logger.error("Generation failed: %s", redact(exc))
-            raise LLMUnavailableError("Answer generation failed") from None
+        except Exception as exc:  # every model failed: show the best passages instead
+            return self._excerpt_fallback(hits, started, exc)
 
         parsed = parse_structured(raw_answer)
         explanation, key_points, memory_tip = "", [], ""
@@ -182,11 +179,8 @@ class RAGPipeline:
             return {**refused, "latency_ms": self._ms(started)}
         try:
             raw = self.generator.generate_deep(question, format_context(hits))
-        except LLMUnavailableError:
-            raise
         except Exception as exc:
-            logger.error("Deep generation failed: %s", redact(exc))
-            raise LLMUnavailableError("Answer generation failed") from None
+            return self._excerpt_fallback(hits, started, exc)
         parsed = parse_structured(raw)
         provider = getattr(self.generator, "last_provider", None)
         if parsed is None or parsed.get("sufficient") is False:
@@ -242,8 +236,6 @@ class RAGPipeline:
                 rewritten = self.generator.rewrite_query(question, history).strip().strip('"')
                 if 3 <= len(rewritten) <= 400:
                     query = rewritten
-            except LLMUnavailableError:
-                raise
             except Exception as exc:
                 logger.warning("Query rewrite failed: %s", redact(exc))
         kw = {"top_k": settings.tutor_top_k, "max_chunks": settings.tutor_max_chunks}
@@ -254,11 +246,8 @@ class RAGPipeline:
                    else "<context>\n(no passages from the document matched this message)\n</context>")
         try:
             raw = self.generator.generate_tutor(question, context, history)
-        except LLMUnavailableError:
-            raise
         except Exception as exc:
-            logger.error("Tutor generation failed: %s", redact(exc))
-            raise LLMUnavailableError("Answer generation failed") from None
+            return self._excerpt_fallback(hits, started, exc)
         provider = getattr(self.generator, "last_provider", None)
         parsed = parse_tutor(raw)
         if not parsed["answer"]:
@@ -277,6 +266,31 @@ class RAGPipeline:
             "refused": parsed["not_in_pdf"],
             "chat": parsed["chat"],
             "provider": provider,
+            "latency_ms": self._ms(started),
+        }
+
+    def _excerpt_fallback(self, hits: list[dict], started: float, exc: Exception) -> dict:
+        """Every AI model failed (free-tier limits, timeouts). Instead of an
+        error, show the most relevant passages from the PDF with page links."""
+        logger.error("All models failed, serving excerpts: %s", redact(exc))
+        if not hits:
+            raise LLMUnavailableError("The AI is busy right now") from None
+        top = sorted(hits, key=lambda h: h["score"], reverse=True)[:3]
+        top = sorted(top, key=lambda h: (h["doc_name"], h["page_number"]))
+        parts = ["The AI tutor is busy for a moment, so here are the most relevant parts "
+                 "of your PDF. Ask again in a few seconds for a full explanation."]
+        for h in top:
+            n = hits.index(h) + 1
+            text = " ".join(h["text"].split())
+            if len(text) > 600:
+                text = text[:600].rsplit(" ", 1)[0] + "\u2026"
+            parts.append(f"### Page {h['page_number']}\n> {text} [Passage {n}]")
+        answer = "\n\n".join(parts)
+        citations = self._resolve_citations(answer, hits, fallback=False)
+        return {
+            "mode": "tutor", "answer": answer, "citations": citations, "follow_ups": [],
+            "refused": False, "degraded": True, "provider": "excerpts",
+            "pages": sorted({c["page_number"] for c in citations}),
             "latency_ms": self._ms(started),
         }
 

@@ -84,13 +84,28 @@ def test_invented_passage_numbers_dropped():
     assert [c["passage"] for c in out["citations"]] == [1]
 
 
-def test_llm_error_propagates():
+def test_llm_error_falls_back_to_excerpts():
     gen = TutorGenerator("", error=LLMUnavailableError("down"))
-    try:
-        RAGPipeline(TutorRetriever([hit(1)]), gen).tutor_answer("q", [])
-    except LLMUnavailableError:
-        return
-    raise AssertionError("expected LLMUnavailableError")
+    out = RAGPipeline(TutorRetriever([hit(1)]), gen).tutor_answer("q", [])
+    assert out["degraded"] is True and out["citations"] and "[Passage 1]" in out["answer"]
+
+
+def test_fallback_generator_survives_timeouts_and_tries_all_models():
+    import httpx
+    from src.llm import FallbackGenerator
+
+    class Slow:
+        provider = "gemini"
+        def generate_tutor(self, q, c, h=None):
+            raise httpx.ReadTimeout("The read operation timed out")
+
+    class Ok:
+        provider = "groq"
+        def generate_tutor(self, q, c, h=None):
+            return "fine"
+
+    gen = FallbackGenerator([Slow(), Ok()])
+    assert gen.generate_tutor("q", "c") == "fine" and gen.last_provider == "groq"
 
 
 def test_parse_tutor_expands_citation_ranges_and_strips_boxed():

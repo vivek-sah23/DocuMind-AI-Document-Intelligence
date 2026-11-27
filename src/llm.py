@@ -240,7 +240,9 @@ def rewrite_prompt(question: str, history: list[dict] | None) -> str:
 class GeminiGenerator:
     provider = "gemini"
 
-    def __init__(self, api_key: str | None = None, model_name: str | None = None):
+    def __init__(self, api_key: str | None = None, model_name: str | None = None,
+                 tutor_model: str | None = None):
+        self.tutor_model = tutor_model
         self.api_key = api_key if api_key is not None else settings.gemini_api_key
         self.model_name = model_name or settings.gemini_model
         self._client = None
@@ -254,7 +256,7 @@ class GeminiGenerator:
         if self._client is None:
             self._client = genai.Client(
                 api_key=self.api_key,
-                http_options=types.HttpOptions(timeout=45000),
+                http_options=types.HttpOptions(timeout=28000),
             )
         return self._client
 
@@ -289,7 +291,7 @@ class GeminiGenerator:
         )
         return self._extract_text(
             self._call_with_retry(tutor_prompt(question, formatted_context, history), config,
-                                  settings.gemini_tutor_model)
+                                  (self.tutor_model or settings.gemini_tutor_model))
         )
 
     def rewrite_query(self, question: str, history=None) -> str:
@@ -300,7 +302,7 @@ class GeminiGenerator:
         )
         return self._extract_text(
             self._call_with_retry(rewrite_prompt(question, history), config,
-                                  settings.gemini_tutor_model)
+                                  (self.tutor_model or settings.gemini_tutor_model))
         )
 
     def _call_with_retry(self, prompt: str, config, model: str | None = None):
@@ -423,7 +425,7 @@ class GroqGenerator:
         attempts = 2
         for attempt in range(1, attempts + 1):
             try:
-                with httpx.Client(timeout=60, transport=self._transport) as client:
+                with httpx.Client(timeout=30, transport=self._transport) as client:
                     resp = client.post(GROQ_URL, json=payload, headers=headers)
             except httpx.HTTPError as exc:
                 if attempt == attempts:
@@ -437,10 +439,12 @@ class GroqGenerator:
                     text = resp.json()["choices"][0]["message"]["content"]
                 except (KeyError, IndexError, ValueError):
                     text = None
+                if text:
+                    text = re.sub(r"<think>[\s\S]*?</think>", "", text)
                 if text and text.strip():
                     return text.strip()
                 raise LLMUnavailableError("Groq returned an empty answer")
-            retriable = resp.status_code == 429 or resp.status_code >= 500
+            retriable = resp.status_code >= 500  # 429: move on to the next model at once
             if not retriable or attempt == attempts:
                 raise LLMUnavailableError(
                     f"Groq request failed (code {resp.status_code})"
@@ -456,6 +460,7 @@ class FallbackGenerator:
     def __init__(self, generators: list) -> None:
         self.generators = generators
         self.last_provider = None
+        self.budget_s = 60.0
 
     def generate_answer(self, question: str, formatted_context: str) -> str:
         return self._run("generate_answer", question, formatted_context)
@@ -470,18 +475,26 @@ class FallbackGenerator:
         return self._run("rewrite_query", question, history)
 
     def _run(self, method: str, *args) -> str:
+        """Try each model in turn. Any failure (rate limit, timeout, bad
+        reply, network) moves on to the next one within a time budget."""
         last_error = None
+        started = time.monotonic()
         for gen in self.generators:
+            if last_error is not None and time.monotonic() - started > self.budget_s:
+                break
             try:
                 out = getattr(gen, method)(*args)
                 self.last_provider = getattr(gen, "provider", "llm")
                 return out
-            except LLMUnavailableError as exc:
-                logger.warning("%s unavailable: %s", getattr(gen, "provider", "llm"), exc)
+            except Exception as exc:  # noqa: BLE001 - every failure falls through
+                logger.warning("%s/%s unavailable: %s", getattr(gen, "provider", "llm"),
+                               getattr(gen, "model_name", "?"), redact(exc))
                 last_error = exc
-        raise last_error or LLMUnavailableError(
-            "No LLM API key is configured (set GROQ_API_KEY or GEMINI_API_KEY)."
-        )
+        if isinstance(last_error, LLMUnavailableError) or last_error is None:
+            raise last_error or LLMUnavailableError(
+                "No LLM API key is configured (set GROQ_API_KEY or GEMINI_API_KEY)."
+            )
+        raise LLMUnavailableError("All models are busy right now") from None
 
 
 def build_generator() -> FallbackGenerator:
@@ -493,6 +506,11 @@ def build_generator() -> FallbackGenerator:
     if settings.groq_configured:
         # Last resort with its own per-minute token bucket on Groq's free tier.
         gens.append(GroqGenerator(model_name="openai/gpt-oss-20b"))
+        gens.append(GroqGenerator(model_name="qwen/qwen3.8-27b"))
+    if settings.gemini_configured:
+        # Separate free quota bucket from the main Gemini model.
+        gens.append(GeminiGenerator(model_name=settings.gemini_model,
+                                    tutor_model=settings.gemini_model))
     return FallbackGenerator(gens)
 
 

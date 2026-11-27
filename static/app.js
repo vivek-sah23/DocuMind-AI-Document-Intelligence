@@ -813,7 +813,7 @@
   function appendMeta(card, res, onDeeper) {
     var meta = el("div", "meta");
     meta.appendChild(el("span", null, (res.latency_ms / 1000).toFixed(1) + "s"));
-    if (res.provider) meta.appendChild(el("span", null, res.provider === "groq" ? "Groq" : "Gemini"));
+    if (res.provider) meta.appendChild(el("span", null, res.provider === "groq" ? "Groq" : res.provider === "excerpts" ? "PDF excerpts" : "Gemini"));
     meta.appendChild(el("span", null, "From your document only"));
     var lc = listenControls(res);
     if (lc) meta.appendChild(lc);
@@ -870,6 +870,35 @@
     return wrap;
   }
 
+  var RETRY_WAIT = [3000, 6000, 10000, 15000];
+  function setTypingLabel(typing, text) {
+    var card = typing.querySelector(".card"), lab = typing.querySelector(".typing-label");
+    if (!lab && card) { lab = el("span", "typing-label"); card.classList.add("with-label"); card.insertBefore(lab, card.firstChild); }
+    if (lab) lab.textContent = text;
+  }
+  /* POST /api/chat. Retries cold starts, gateway errors and dropped connections so the user rarely sees a failure. */
+  function chatFetch(payload, typing, tries) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 100000);
+    return fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: ctl ? ctl.signal : undefined })
+      .then(function (r) {
+        clearTimeout(timer);
+        return r.text().then(function (t) {
+          var b = null; try { b = JSON.parse(t); } catch (e) {}
+          return { ok: r.ok && !!b, status: r.status, body: b };
+        });
+      })
+      .catch(function () { clearTimeout(timer); return { ok: false, status: 0, body: null }; })
+      .then(function (res) {
+        var transient = res.status === 0 || res.status === 502 || res.status === 503 || res.status === 504 || (res.ok === false && res.status === 200);
+        if (!res.ok && transient && tries < RETRY_WAIT.length) {
+          setTypingLabel(typing, tries === 0 ? "Waking things up, one moment\u2026" : "Still working, retrying\u2026");
+          return new Promise(function (ok) { setTimeout(ok, RETRY_WAIT[tries]); }).then(function () { return chatFetch(payload, typing, tries + 1); });
+        }
+        return res;
+      });
+  }
+
   function ask(question, forceMode) {
     question = (question || "").trim();
     var it = active();
@@ -889,18 +918,17 @@
     var payload = { question: question, mode: mode };
     if (mode === "tutor") payload.history = it.history.slice(-8);
     if (state.scope === "doc" || readyItems().length < 2) payload.doc_id = it.key;
-    fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+    chatFetch(payload, typing, 0)
       .then(function (res) {
         typing.remove();
         var node;
         if (!res.ok) {
           var d = res.body && res.body.detail;
-          node = renderError(typeof d === "string" ? d : "Something went wrong. Please try again.");
+          node = renderError(res.status === 429 && typeof d === "string" ? d : typeof d === "string" && res.status < 500 ? d : "The AI is busy right now (free models have limits). Please try again in a few seconds.");
         } else {
           node = renderAnswer(res.body, question);
           it.log.push({ q: question, mode: mode, res: slimRes(res.body) });
-          if (mode === "tutor" && res.body && res.body.answer) {
+          if (mode === "tutor" && res.body && res.body.answer && !res.body.degraded) {
             it.history.push({ role: "user", text: question.slice(0, 1500) });
             it.history.push({ role: "assistant", text: String(res.body.answer).replace(/\[Passages?\s+\d[^\]]*\]/g, "").slice(0, 2500) });
             if (it.history.length > 12) it.history = it.history.slice(-12);
@@ -911,7 +939,7 @@
         if (state.voice && res.ok) { var lb = node.querySelector(".listen-btn"); if (lb) lb.click(); }
         if (thread.parentNode === messages) messages.scrollTop = Math.max(0, node.offsetTop - 14);
       })
-      .catch(function () { typing.remove(); thread.appendChild(renderError("Could not reach the server. It may be waking up, try again in a moment.")); })
+      .catch(function () { typing.remove(); thread.appendChild(renderError("Still could not reach the server. The free host may be waking up. Please try again in about a minute.")); })
       .then(function () { state.busy = false; renderInput(); if (!narrow()) input.focus({ preventScroll: true }); });
   }
 

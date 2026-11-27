@@ -167,6 +167,7 @@ Render free plan, configured by `render.yaml`:
 - **Shared demo.** The hosted demo has no accounts, so uploads are visible to every visitor. Use public or sample PDFs only.
 - **Ephemeral storage.** On the free plan, uploads and the index reset when the service restarts or redeploys.
 - **OCR budget.** Scanned PDFs are read up to the first 40 pages to stay inside the free Gemini quota.
+- **Free-tier resilience.** Answers try five free models in order (Groq gpt-oss-120b, Gemini 3.5 Flash, Groq gpt-oss-20b, Groq Qwen 3.8 27B, Gemini Flash-Lite), skipping any that is rate-limited or times out. If all are busy, the chat shows the most relevant PDF passages with page links instead of an error, and the browser retries cold starts and dropped connections automatically.
 - **Tutor quality.** The free models are strong but not frontier-level. Answers are grounded in the retrieved passages only, so a very broad question can miss a detail that sits on a page the search did not pick up. Ask again with a narrower topic. The tutor sends only the last few turns to the model. Saved chats live in this browser only (up to 40 exchanges per PDF), so they do not follow you to another device or browser, and clearing site data erases them.
 - **Audio.** Listen and Voice depend on the browser's speech voices, so the voice differs per device. Deep dive answers are limited to what the retrieved passages say, so a very broad topic may need a follow-up question.
 - **Cold start.** The free service sleeps when idle and takes about a minute to wake.

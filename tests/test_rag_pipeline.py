@@ -107,8 +107,8 @@ class TestRefusalAndErrors:
             FakeRetriever([hit(1)]),
             FakeGenerator(error=LLMUnavailableError("quota exhausted")),
         )
-        with pytest.raises(LLMUnavailableError, match="quota exhausted"):
-            pipe.answer("q")
+        out = pipe.answer("q")  # falls back to PDF excerpts instead of an error
+        assert out["degraded"] is True and out["citations"] and not out["refused"]
 
     def test_refusal_text_flagged(self):
         from src.llm import REFUSAL_TEXT
@@ -284,5 +284,5 @@ class TestDeepDive:
         class Boom:
             def generate_deep(self, q, c):
                 raise LLMUnavailableError("down")
-        with pytest.raises(LLMUnavailableError):
-            RAGPipeline(DeepRetriever([hit(1)]), Boom()).deep_answer("x")
+        out = RAGPipeline(DeepRetriever([hit(1)]), Boom()).deep_answer("x")
+        assert out["degraded"] is True and out["citations"]
