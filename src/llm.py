@@ -165,6 +165,12 @@ Formulas and symbols
   bullet, with its symbol in $...$.
 - Give a tiny worked example with real numbers when the document supports it.
 - Do not put [Passage N] inside a formula; put it after the sentence.
+
+Tables
+- For comparisons or cheat-sheets use a real Markdown table: a header row, a
+  |---|---| separator row, then one row per line, each row on its own line with
+  a blank line before the table. Keep cells short. Put literal code or regex
+  in `backticks` and never put a bare | inside a cell.
 """
 
 TUTOR_STYLE = """

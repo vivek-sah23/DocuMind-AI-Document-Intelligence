@@ -224,3 +224,13 @@ body { overflow: hidden; }
 .card.tutor .md-list { gap: 7px; padding-left: 20px; }
 .card.tutor .md-list li { padding-left: 2px; }
 .card.tutor strong { font-weight: 650; }
+
+/* tables: readable, scrollable on small screens */
+.card.tutor .md-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 10px; margin: 4px 0; background: var(--surface); }
+.card.tutor .md-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: max-content; font-size: 14px; line-height: 1.5; }
+.card.tutor .md-table th, .card.tutor .md-table td { padding: 9px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: normal; }
+.card.tutor .md-table th { font-weight: 650; white-space: nowrap; background: rgba(127,127,127,.08); }
+.card.tutor .md-table tbody tr:last-child td { border-bottom: 0; }
+.card.tutor .md-table tbody tr:nth-child(even) td { background: rgba(127,127,127,.04); }
+.card.tutor .md-table td { min-width: 90px; }
+.card.tutor .md-table code { white-space: nowrap; }

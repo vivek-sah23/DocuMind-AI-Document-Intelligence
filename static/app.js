@@ -544,12 +544,16 @@
     return t.trim();
   }
   function extractMath(text) {
-    return String(text).replace(MATH_RE, function (m, a, b, c, d) {
-      var tex = a != null ? a : b != null ? b : c != null ? c : d;
-      var display = a != null || b != null;
-      MATHS.push({ tex: cleanTex(tex), display: display });
-      return "\u0001" + (MATHS.length - 1) + "\u0002";
-    });
+    /* Code spans are literal: never treat \( \) or $ inside backticks as math. */
+    return String(text).split(/(`[^`\n]*`)/g).map(function (seg, i) {
+      if (i % 2 === 1) return seg;
+      return seg.replace(MATH_RE, function (m, a, b, c, d) {
+        var tex = a != null ? a : b != null ? b : c != null ? c : d;
+        var display = a != null || b != null;
+        MATHS.push({ tex: cleanTex(tex), display: display });
+        return "\u0001" + (MATHS.length - 1) + "\u0002";
+      });
+    }).join("");
   }
   function paintMath(node, mj) {
     if (window.katex) {
@@ -615,6 +619,36 @@
       } else parent.appendChild(document.createTextNode(part.replace(/\\\$/g, "$")));
     });
   }
+  /* ---------- Markdown tables ---------- */
+  function splitRow(line) {
+    var t = line.trim(), cells = [], cur = "", inCode = false;
+    if (t.charAt(0) === "|") t = t.slice(1);
+    for (var k = 0; k < t.length; k++) {
+      var ch = t.charAt(k);
+      if (ch === "`") inCode = !inCode;
+      if (ch === "|" && !inCode && t.charAt(k - 1) !== "\\") { cells.push(cur.trim()); cur = ""; }
+      else cur += ch;
+    }
+    if (cur.trim() !== "" || !cells.length) cells.push(cur.trim());
+    return cells;
+  }
+  function isTableSep(line) {
+    var t = (line || "").trim();
+    return t.indexOf("|") >= 0 && t.indexOf("-") >= 0 && /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(t);
+  }
+  function buildTable(rows, aligns, byPassage) {
+    var wrap = el("div", "md-table-wrap"), tbl = el("table", "md-table"), thead = el("thead"), tbody = el("tbody"), n = rows[0].length;
+    function fill(tr, cells, tag) {
+      for (var c = 0; c < n; c++) {
+        var cell = el(tag); if (aligns[c]) cell.style.textAlign = aligns[c];
+        inline(cell, cells[c] == null ? "" : cells[c], byPassage); tr.appendChild(cell);
+      }
+    }
+    var htr = el("tr"); fill(htr, rows[0], "th"); thead.appendChild(htr);
+    rows.slice(1).forEach(function (r) { var tr = el("tr"); fill(tr, r, "td"); tbody.appendChild(tr); });
+    tbl.appendChild(thead); tbl.appendChild(tbody); wrap.appendChild(tbl);
+    return wrap;
+  }
   /* Small, safe Markdown renderer for tutor answers (DOM nodes only, no innerHTML). */
   function mdBlocks(parent, text, byPassage) {
     var lines = extractMath(String(text).replace(/\r/g, "")).split("\n"), i = 0, para = [], list = null;
@@ -626,6 +660,17 @@
     for (; i < lines.length; i++) {
       var ln = lines[i], t = ln.trim(), m;
       if (!t) { flushPara(); flushList(); continue; }
+      if (t.indexOf("|") >= 0 && isTableSep(lines[i + 1])) {
+        flushPara(); flushList();
+        var head = splitRow(t), aligns = splitRow(lines[i + 1]).map(function (c) {
+          return /^:-*:$/.test(c) ? "center" : /-:$/.test(c) ? "right" : "";
+        }), rows = [head];
+        i += 2;
+        while (i < lines.length && lines[i].trim() && lines[i].indexOf("|") >= 0) { rows.push(splitRow(lines[i])); i++; }
+        i--;
+        parent.appendChild(buildTable(rows, aligns, byPassage));
+        continue;
+      }
       if (/^(-{3,}|\*{3,})$/.test(t)) { flushPara(); flushList(); parent.appendChild(el("hr")); continue; }
       if ((m = /^(#{1,4})\s+(.*)$/.exec(t))) {
         flushPara(); flushList();
