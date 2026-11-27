@@ -1,4 +1,5 @@
 /* Landing page: mobile menu, header shadow, reveal on scroll. */
+document.documentElement.classList.remove("no-js");
 (function () {
   "use strict";
   var header = document.getElementById("site-header");

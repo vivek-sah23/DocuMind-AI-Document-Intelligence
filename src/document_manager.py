@@ -28,7 +28,9 @@ class DocumentManager:
         store: VectorStore,
         registry_dir: Path | None = None,
         pdf_dir: Path | None = None,
+        ocr=None,
     ) -> None:
+        self.ocr = ocr
         self.engine = engine
         self.store = store
         self.registry_dir = Path(registry_dir) if registry_dir else settings.metadata_dir
@@ -71,10 +73,13 @@ class DocumentManager:
         path = self.pdf_dir / f"{doc_id}.pdf"
         return path if path.is_file() else None
 
+    def has(self, doc_id: str) -> bool:
+        return doc_id in self._docs
+
     def get(self, doc_id: str) -> dict | None:
         return self._docs.get(doc_id)
 
-    def ingest(self, data: bytes, filename: str, use_ocr: bool = False) -> dict:
+    def ingest(self, data: bytes, filename: str) -> dict:
         """Validate, dedupe, extract, chunk, embed and index one PDF."""
         validate_pdf(data, filename, settings.max_file_size_mb)
         doc_id = sha256_bytes(data)
@@ -85,7 +90,7 @@ class DocumentManager:
                     f"{self._docs[doc_id]['doc_name']}"
                 )
 
-        extracted = extract_pages(data, use_ocr=use_ocr)
+        extracted = extract_pages(data, ocr=self.ocr)
         chunks = chunk_pages(
             extracted.pages,
             doc_id=doc_id,

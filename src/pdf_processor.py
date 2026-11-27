@@ -41,8 +41,6 @@ class ExtractedDocument:
 
 def validate_pdf(data: bytes, filename: str, max_size_mb: int) -> None:
     """Defensive ingestion gate: extension, size, magic bytes, structure."""
-    if not filename.lower().endswith(".pdf"):
-        raise PDFValidationError(f"{filename!r} is not a .pdf file")
     if len(data) == 0:
         raise PDFValidationError("Uploaded file is empty")
     if len(data) > max_size_mb * 1024 * 1024:
@@ -53,10 +51,15 @@ def validate_pdf(data: bytes, filename: str, max_size_mb: int) -> None:
         raise PDFValidationError("File does not start with %PDF- magic bytes")
     try:
         doc = fitz.open(stream=data, filetype="pdf")
+        locked = doc.needs_pass
         _ = doc.page_count
         doc.close()
     except Exception as exc:  # PyMuPDF raises several concrete types
         raise PDFValidationError(f"PDF is corrupted or unreadable: {exc}") from exc
+    if locked:
+        raise PDFValidationError(
+            "This PDF is password protected. Remove the password and upload it again."
+        )
 
 
 def _clean_page_text(text: str) -> str:
@@ -67,13 +70,19 @@ def _clean_page_text(text: str) -> str:
     return text.strip()
 
 
-def extract_pages(data: bytes, use_ocr: bool = False) -> ExtractedDocument:
+MAX_OCR_PAGES = 40  # keeps scanned uploads inside the free Gemini quota
+
+
+def extract_pages(data: bytes, ocr=None, max_ocr_pages: int = MAX_OCR_PAGES) -> ExtractedDocument:
     """Extract per-page text with reading-order sorting (sort=True).
 
-    Pages with fewer than MIN_PAGE_CHARS characters are flagged so the
-    caller can report them or fall back to OCR (Milestone 9 hook).
+    Pages with fewer than MIN_PAGE_CHARS characters are treated as scanned.
+    When `ocr` (a callable taking PNG bytes and returning text) is given,
+    up to `max_ocr_pages` of them are read through it; the rest are flagged
+    in `scanned_pages` so the UI can say which pages have no text.
     """
     result = ExtractedDocument()
+    ocr_used = 0
     with fitz.open(stream=data, filetype="pdf") as doc:
         if doc.page_count == 0:
             raise PDFValidationError("PDF has no pages")
@@ -81,8 +90,14 @@ def extract_pages(data: bytes, use_ocr: bool = False) -> ExtractedDocument:
             page = doc.load_page(index)
             text = _clean_page_text(page.get_text("text", sort=True))
             needs_ocr = len(text) < MIN_PAGE_CHARS
-            if needs_ocr and use_ocr:
-                text = _ocr_page(page)
+            if needs_ocr and ocr is not None and ocr_used < max_ocr_pages:
+                ocr_used += 1
+                try:
+                    png = page.get_pixmap(dpi=110).tobytes("png")
+                    text = _clean_page_text(ocr(png))
+                except Exception as exc:
+                    logger.warning("OCR failed on page %d: %s", index + 1, exc.__class__.__name__)
+                    text = ""
                 needs_ocr = len(text) < MIN_PAGE_CHARS
             result.pages.append(
                 PageText(
@@ -94,25 +109,7 @@ def extract_pages(data: bytes, use_ocr: bool = False) -> ExtractedDocument:
             )
     if result.total_chars == 0:
         raise PDFValidationError(
-            "No extractable text found. The PDF looks fully scanned; "
-            "OCR support is required to index it."
+            "No readable text found in this PDF. It looks like a scan and text "
+            "recognition was not available or could not read it."
         )
     return result
-
-
-def _ocr_page(page: "fitz.Page") -> str:
-    """Lazy OCR fallback. Optional dependency: pytesseract + Pillow +
-    a system tesseract binary. Raises PDFValidationError if unavailable."""
-    try:
-        import io
-
-        import pytesseract
-        from PIL import Image
-    except ImportError as exc:
-        raise PDFValidationError(
-            "Scanned page detected but OCR dependencies "
-            "(pytesseract, Pillow, tesseract) are not installed"
-        ) from exc
-    pix = page.get_pixmap(dpi=300)
-    image = Image.open(io.BytesIO(pix.tobytes("png")))
-    return _clean_page_text(pytesseract.image_to_string(image))

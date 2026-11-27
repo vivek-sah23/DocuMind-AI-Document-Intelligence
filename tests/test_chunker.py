@@ -93,3 +93,15 @@ class TestChunking:
         )
         ids = [c.chunk_id for c in chunks]
         assert len(ids) == len(set(ids))
+
+
+def test_chunks_never_span_pages():
+    from src.pdf_processor import PageText
+
+    pages = [
+        PageText(1, "Alpha one is here. Alpha two follows.", 40),
+        PageText(2, "Beta one is here. Beta two follows.", 40),
+    ]
+    chunks = chunk_pages(pages, "d", "d.pdf", chunk_size=200, overlap=40)
+    assert [c.page_number for c in chunks] == [1, 2]
+    assert "Beta" not in chunks[0].text and "Alpha" not in chunks[1].text

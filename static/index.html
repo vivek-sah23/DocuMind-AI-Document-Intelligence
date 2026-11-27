@@ -1,180 +1,154 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DocuMind | Chat with your PDFs. Answers you can verify.</title>
-  <meta name="description" content="DocuMind turns any PDF into a fast, cited Q&A workspace. Preview the document, ask questions, and get grounded answers with explanations and memory tips." />
-  <meta name="theme-color" content="#4f46e5" />
+  <title>DocuMind | Ask your PDF, get the page it came from</title>
+  <meta name="description" content="Upload any PDF, read it on the left and ask questions on the right. Every answer comes with an explanation, a memory tip and the page it was found on." />
+  <meta name="theme-color" content="#ffffff" />
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/base.css" />
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
-<body class="landing">
+<body>
 
   <header class="site-header" id="site-header">
-    <div class="container header-inner">
+    <div class="wrap header-inner">
       <a class="brand" href="/" aria-label="DocuMind home">
-        <img src="/static/logo.svg" alt="" class="brand-mark" />
-        <span class="brand-name">DocuMind</span>
+        <img src="/static/logo.svg" alt="" class="brand-mark" />DocuMind
       </a>
       <nav class="site-nav" id="site-nav" aria-label="Primary">
-        <a href="#features">Features</a>
+        <a href="/">Home</a>
         <a href="#how">How it works</a>
-        <a href="#study">Study mode</a>
-        <a href="#trust">Trust</a>
+        <a href="#answers">Answers</a>
+        <a href="#faq">FAQ</a>
         <a href="https://github.com/vivek-sah23/DocuMind-AI-Document-Intelligence" target="_blank" rel="noopener">GitHub</a>
-        <a href="/app" class="btn btn-primary btn-sm nav-cta">Open workspace</a>
+        <a href="/app" class="btn btn-line btn-sm nav-cta">Open the app</a>
       </nav>
-      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="site-nav">
-        <span></span><span></span><span></span>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">
+        <span></span><span></span>
       </button>
     </div>
   </header>
 
   <main>
-
     <section class="hero">
-      <div class="hero-bg" aria-hidden="true"></div>
-      <div class="container hero-inner">
-        <span class="pill"><span class="pill-dot"></span> Instant, cited answers from your PDFs</span>
-        <h1>Stop searching your PDFs.<br /><span class="grad">Start asking them.</span></h1>
-        <p class="hero-sub">
-          Upload a document, preview it side by side, and get fast, grounded answers with a clear
-          explanation, page-level sources, and a memory tip so the answer sticks.
-        </p>
-        <div class="hero-actions">
-          <a href="/app" class="btn btn-primary btn-lg">Open workspace
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </a>
-          <a href="#how" class="btn btn-ghost btn-lg">See how it works</a>
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Free PDF question answering</p>
+          <h1>Ask your PDF. Get the answer and the page it came from.</h1>
+          <p class="lead">
+            Drop in any PDF. Read it on one side, ask questions on the other. Each answer is
+            explained in plain words, comes with a way to remember it, and links to the exact page.
+          </p>
+          <div class="hero-actions">
+            <a href="/app" class="btn btn-dark">Upload a PDF</a>
+            <a href="#how" class="text-link">See how it works <span aria-hidden="true">&rarr;</span></a>
+          </div>
+          <p class="hero-note">No account. No card. Works on textbooks, papers, notes and scans.</p>
         </div>
-        <ul class="hero-stats" aria-label="Highlights">
-          <li><strong>Page-level</strong><span>citations on every answer</span></li>
-          <li><strong>Sub-second</strong><span>retrieval over your PDF</span></li>
-          <li><strong>Zero</strong><span>invented sources</span></li>
-          <li><strong>Free</strong><span>to use, no sign-up</span></li>
-        </ul>
-      </div>
-    </section>
-
-    <section id="features" class="section">
-      <div class="container">
-        <div class="section-head reveal">
-          <span class="eyebrow">Features</span>
-          <h2>Everything you need to learn from a document</h2>
-          <p>Built for students, researchers and teams who need answers they can trust, quickly.</p>
-        </div>
-        <div class="feature-grid">
-          <article class="feature-card reveal">
-            <span class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span>
-            <h3>Your file, front and center</h3>
-            <p>Every upload keeps its real file name and opens in a built-in viewer, so you can read the PDF while you chat with it.</p>
-          </article>
-          <article class="feature-card reveal">
-            <span class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>
-            <h3>Fast, accurate answers</h3>
-            <p>Exact-match vector search finds the right passages in milliseconds, then a fast LLM writes the answer from those passages only.</p>
-          </article>
-          <article class="feature-card reveal">
-            <span class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg></span>
-            <h3>Memory tips</h3>
-            <p>Each answer ends with a mnemonic or shortcut, so you remember the point quickly instead of re-reading the page.</p>
-          </article>
-          <article class="feature-card reveal">
-            <span class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.3 8.3-8 9-4.7-.7-8-4.5-8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span>
-            <h3>Verifiable citations</h3>
-            <p>Click any citation to jump to that exact page in the preview. Page numbers come from the document, never from the model.</p>
-          </article>
-          <article class="feature-card reveal">
-            <span class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M3 10h6"/></svg></span>
-            <h3>Many documents, one place</h3>
-            <p>Keep several PDFs indexed, chat with one or search across all, and remove any file when you are done.</p>
-          </article>
-          <article class="feature-card reveal">
-            <span class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></span>
-            <h3>Works on every screen</h3>
-            <p>A layout that adapts from phone to desktop, with a smooth workspace you can use anywhere.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="how" class="section section-alt">
-      <div class="container">
-        <div class="section-head reveal">
-          <span class="eyebrow">How it works</span>
-          <h2>From upload to answer in four steps</h2>
-          <p>Two simple pipelines: index once, answer instantly.</p>
-        </div>
-        <ol class="steps">
-          <li class="step reveal"><span class="step-n">1</span><h3>Upload</h3><p>Drop in a PDF. It is validated and checked so the same file is never indexed twice.</p></li>
-          <li class="step reveal"><span class="step-n">2</span><h3>Index</h3><p>Pages are split into passages and embedded with all-MiniLM-L6-v2, then stored in FAISS.</p></li>
-          <li class="step reveal"><span class="step-n">3</span><h3>Retrieve</h3><p>Your question is matched against the passages by exact cosine similarity.</p></li>
-          <li class="step reveal"><span class="step-n">4</span><h3>Answer</h3><p>A fast LLM answers only from those passages and cites the page for each claim.</p></li>
-        </ol>
-      </div>
-    </section>
-
-    <section id="study" class="section">
-      <div class="container split">
-        <div class="split-copy reveal">
-          <span class="eyebrow">Study mode</span>
-          <h2>Answers that teach, not just reply</h2>
-          <p>Every response is organised the same way, so you can scan it in seconds and keep it in your head.</p>
-          <ul class="check-list">
-            <li><strong>Answer.</strong> The direct response, in one to three sentences.</li>
-            <li><strong>Explanation.</strong> Why it is true, in plain language.</li>
-            <li><strong>Key points.</strong> The facts to remember, as short bullets.</li>
-            <li><strong>Memory tip.</strong> A mnemonic or pattern to recall it fast.</li>
-            <li><strong>Sources.</strong> Page citations that open the PDF at the right page.</li>
-          </ul>
-          <a href="/app" class="btn btn-primary">Try it on a PDF</a>
-        </div>
-        <div class="split-visual reveal" aria-hidden="true">
-          <div class="answer-demo">
-            <div class="ad-row ad-label">Answer</div>
-            <div class="ad-line w90"></div><div class="ad-line w70"></div>
-            <div class="ad-row ad-label">Explanation</div>
-            <div class="ad-line w100"></div><div class="ad-line w80"></div><div class="ad-line w60"></div>
-            <div class="ad-tip"><span>Memory tip</span><div class="ad-line w85"></div></div>
-            <div class="ad-chips"><i>p. 4</i><i>p. 9</i><i>p. 12</i></div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="blob">
+            <i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="trust" class="section section-alt">
-      <div class="container">
-        <div class="section-head reveal">
-          <span class="eyebrow">Trust</span>
-          <h2>Built to be verifiable</h2>
-          <p>The failure modes of document chat, designed out.</p>
+    <section id="how" class="block">
+      <div class="wrap two-col">
+        <div class="col-title reveal">
+          <p class="eyebrow">How it works</p>
+          <h2>Three steps, and the first one is the only one you do.</h2>
         </div>
-        <div class="trust-grid">
-          <div class="trust-item reveal"><h3>Grounded or refused</h3><p>Below a similarity threshold, DocuMind says the document does not contain the answer instead of guessing.</p></div>
-          <div class="trust-item reveal"><h3>Prompt-injection safe</h3><p>Text inside a PDF is treated as data. It can never change the assistant's instructions.</p></div>
-          <div class="trust-item reveal"><h3>Defensive uploads</h3><p>Extension, magic bytes, corruption and extractable-text checks run before anything is indexed.</p></div>
-          <div class="trust-item reveal"><h3>Secrets stay server-side</h3><p>API keys live only in server environment variables, are redacted from errors, and requests are rate limited.</p></div>
-        </div>
-        <p class="demo-note reveal">This is a shared demo workspace. Please upload public or sample PDFs only.</p>
+        <ol class="steps">
+          <li class="reveal">
+            <span class="num">01</span>
+            <div>
+              <h3>Upload</h3>
+              <p>Pick a PDF from your phone or computer. It shows up in the viewer straight away, before it has even finished being read.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="num">02</span>
+            <div>
+              <h3>We read it</h3>
+              <p>The text is split into short passages and indexed in memory. Scanned pages are read with OCR, so image-only PDFs work too.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="num">03</span>
+            <div>
+              <h3>Ask</h3>
+              <p>Type a question. The closest passages are found and a fast model answers from them only. If the PDF does not say, it tells you so.</p>
+            </div>
+          </li>
+        </ol>
       </div>
     </section>
 
-    <section class="cta-band">
-      <div class="container cta-inner reveal">
-        <h2>Ready to ask your first question?</h2>
-        <p>Upload a PDF and get a cited answer in seconds.</p>
-        <a href="/app" class="btn btn-light btn-lg">Open workspace</a>
+    <section id="answers" class="block block-tint">
+      <div class="wrap two-col">
+        <div class="col-title reveal">
+          <p class="eyebrow">What an answer looks like</p>
+          <h2>Built for studying, not just replying.</h2>
+          <p class="sub">Every reply has the same five parts, so you always know where to look.</p>
+          <a href="/app" class="btn btn-dark" style="margin-top:22px">Try it on your PDF</a>
+        </div>
+        <dl class="parts">
+          <div class="reveal"><dt>Answer</dt><dd>The direct reply, in one to three sentences.</dd></div>
+          <div class="reveal"><dt>Explanation</dt><dd>Why it is true, in language you would use out loud.</dd></div>
+          <div class="reveal"><dt>Key points</dt><dd>The few facts worth keeping, as short bullets.</dd></div>
+          <div class="reveal"><dt>Memory tip</dt><dd>A mnemonic or pattern so it sticks without re-reading.</dd></div>
+          <div class="reveal"><dt>Sources</dt><dd>Page numbers that open the PDF at that page. They come from the file, never from the model.</dd></div>
+        </dl>
       </div>
     </section>
 
+    <section id="faq" class="block">
+      <div class="wrap two-col">
+        <div class="col-title reveal">
+          <p class="eyebrow">Questions</p>
+          <h2>Straight answers.</h2>
+        </div>
+        <div class="faq">
+          <details class="reveal">
+            <summary>Does it cost anything?</summary>
+            <p>No. It runs on free tiers end to end, and there is no sign-up.</p>
+          </details>
+          <details class="reveal">
+            <summary>What if my PDF is a scan?</summary>
+            <p>Pages with no selectable text are read with OCR. Very long scans are read up to the first 40 pages to stay inside free limits.</p>
+          </details>
+          <details class="reveal">
+            <summary>Who can see my files?</summary>
+            <p>This is a shared demo with no logins, so use public or sample documents only. Files are kept in server memory and disk on a free host, and are wiped whenever it restarts.</p>
+          </details>
+          <details class="reveal">
+            <summary>Can it make things up?</summary>
+            <p>Answers are limited to passages found in your PDF, and page references are checked against the file. When the PDF does not cover a question, you get a plain "not in the document".</p>
+          </details>
+          <details class="reveal">
+            <summary>Is the code open?</summary>
+            <p>Yes, on <a href="https://github.com/vivek-sah23/DocuMind-AI-Document-Intelligence" target="_blank" rel="noopener">GitHub</a>. The retrieval pipeline is plain Python with FAISS and no orchestration framework.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="closer">
+      <div class="wrap closer-inner reveal">
+        <h2>Got a PDF open in another tab? Bring it here.</h2>
+        <a href="/app" class="btn btn-accent">Upload a PDF</a>
+      </div>
+    </section>
   </main>
 
   <footer class="site-footer">
-    <div class="container footer-simple">
+    <div class="wrap footer-inner">
       <p>Designed &amp; Developed by <strong>Vivek</strong></p>
       <p>&copy; 2026 All rights reserved.</p>
     </div>

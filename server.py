@@ -6,11 +6,14 @@ in src/ is unchanged and framework-free.
 """
 from __future__ import annotations
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -18,10 +21,11 @@ from src.config import settings
 from src.document_manager import DocumentManager, DuplicateDocumentError
 from src.embeddings import EmbeddingEngine
 from src.llm import LLMUnavailableError, build_generator
-from src.pdf_processor import PDFValidationError
+from src.ocr import GeminiOCR
+from src.pdf_processor import PDFValidationError, validate_pdf
 from src.rag_pipeline import RAGPipeline
 from src.retriever import Retriever
-from src.utils import RateLimiter, get_logger
+from src.utils import RateLimiter, get_logger, sha256_bytes
 from src.vector_store import VectorStore
 
 logger = get_logger(__name__)
@@ -34,7 +38,9 @@ def build_stack() -> dict:
     settings.ensure_dirs()
     engine = EmbeddingEngine()
     store = VectorStore.load()
-    manager = DocumentManager(engine, store)
+    manager = DocumentManager(
+        engine, store, ocr=GeminiOCR() if settings.gemini_configured else None
+    )
     retriever = Retriever(engine, store)
     pipeline = RAGPipeline(retriever, build_generator())
     return {
@@ -52,7 +58,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="DocuMind", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="DocuMind", version="3.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -106,22 +112,77 @@ def list_documents():
     return {"documents": app.state.stack["manager"].list_documents()}
 
 
-@app.post("/api/documents", status_code=201)
+# Indexing runs off the request thread so the UI can show the PDF at once and
+# poll for progress. One worker keeps memory flat on the 512 MB free plan.
+_indexer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="indexer")
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+
+
+def _clean_name(raw: str | None) -> str:
+    name = (raw or "").replace("\\", "/").split("/")[-1].strip()
+    return name[:180] or "document.pdf"
+
+
+def _run_index_job(doc_id: str, data: bytes, name: str) -> None:
+    try:
+        app.state.stack["manager"].ingest(data, name)
+        status = {"status": "ready"}
+    except DuplicateDocumentError:
+        status = {"status": "ready"}
+    except PDFValidationError as exc:
+        status = {"status": "failed", "error": str(exc)}
+    except Exception:
+        logger.exception("Ingestion failed for %s", name)
+        status = {"status": "failed", "error": "Indexing failed unexpectedly. Please try again."}
+    with _jobs_lock:
+        _jobs[doc_id].update(status, finished=time.time())
+
+
+def _job_view(doc_id: str) -> dict | None:
+    manager = app.state.stack["manager"]
+    record = manager.get(doc_id)
+    if record is not None:
+        return {"doc_id": doc_id, "status": "ready", "document": record}
+    with _jobs_lock:
+        job = _jobs.get(doc_id)
+        if job is None:
+            return None
+        return {"doc_id": doc_id, "status": job["status"], "doc_name": job["name"], "error": job.get("error")}
+
+
+@app.post("/api/documents", status_code=202)
 async def upload_document(request: Request, file: UploadFile = File(...)):
     if not upload_limiter.allow(client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many uploads. Try again in a few minutes.")
     data = await file.read()
-    manager = app.state.stack["manager"]
+    name = _clean_name(file.filename)
     try:
-        record = manager.ingest(data, file.filename or "upload.pdf")
-    except DuplicateDocumentError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        validate_pdf(data, name, settings.max_file_size_mb)
     except PDFValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    except Exception:
-        logger.exception("Ingestion failed for %s", file.filename)
-        raise HTTPException(status_code=500, detail="Indexing failed unexpectedly")
-    return record
+    doc_id = sha256_bytes(data)
+    manager = app.state.stack["manager"]
+    existing = manager.get(doc_id)
+    if existing is not None:
+        return JSONResponse(
+            {"doc_id": doc_id, "status": "ready", "duplicate": True, "document": existing},
+            status_code=200,
+        )
+    with _jobs_lock:
+        job = _jobs.get(doc_id)
+        if job is None or job["status"] == "failed":
+            _jobs[doc_id] = {"status": "indexing", "name": name}
+            _indexer.submit(_run_index_job, doc_id, data, name)
+    return {"doc_id": doc_id, "status": "indexing", "doc_name": name}
+
+
+@app.get("/api/documents/{doc_id}/status")
+def document_status(doc_id: str):
+    view = _job_view(doc_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail="Unknown document")
+    return view
 
 
 @app.get("/api/documents/{doc_id}/file")
@@ -144,6 +205,8 @@ def document_file(doc_id: str):
 
 @app.delete("/api/documents/{doc_id}")
 def delete_document(doc_id: str):
+    with _jobs_lock:
+        _jobs.pop(doc_id, None)
     if not app.state.stack["manager"].delete(doc_id):
         raise HTTPException(status_code=404, detail="Document not found")
     return {"deleted": doc_id}

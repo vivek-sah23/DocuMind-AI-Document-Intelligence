@@ -11,9 +11,29 @@ from tests.test_document_manager import FakeEngine
 
 
 @pytest.fixture(scope="module")
-def client():
-    with TestClient(app) as c:
-        yield c
+def client(tmp_path_factory):
+    """Run the app against throwaway storage so tests never see (or leave)
+    real uploads, and with no API keys so behaviour is deterministic."""
+    import src.config as config
+
+    root = tmp_path_factory.mktemp("storage")
+    saved = {}
+    overrides = {
+        "index_dir": root / "indexes",
+        "metadata_dir": root / "metadata",
+        "pdf_dir": root / "pdfs",
+        "gemini_api_key": "",
+        "groq_api_key": "",
+    }
+    for key, value in overrides.items():
+        saved[key] = getattr(config.settings, key)
+        object.__setattr__(config.settings, key, value)
+    try:
+        with TestClient(app) as c:
+            yield c
+    finally:
+        for key, value in saved.items():
+            object.__setattr__(config.settings, key, value)
 
 
 def test_health(client):
@@ -27,6 +47,10 @@ def test_frontend_served(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "DocuMind" in r.text
+
+
+def test_starts_empty_no_seeded_documents(client):
+    assert client.get("/api/documents").json() == {"documents": []}
 
 
 def test_upload_rejects_non_pdf(client):
@@ -62,6 +86,34 @@ def test_preview_unknown_document_404(client):
     assert client.get("/api/documents/..%2F..%2Fetc%2Fpasswd/file").status_code in (404, 422)
 
 
+def _wait_ready(client, doc_id, tries=100):
+    import time
+
+    for _ in range(tries):
+        body = client.get(f"/api/documents/{doc_id}/status").json()
+        if body["status"] != "indexing":
+            return body
+        time.sleep(0.05)
+    raise AssertionError("indexing did not finish")
+
+
+def test_status_unknown_document_404(client):
+    assert client.get("/api/documents/" + "f" * 64 + "/status").status_code == 404
+
+
+def test_scanned_upload_reports_failure_in_status(client, tmp_path, blank_pdf):
+    store = VectorStore(dim=384)
+    app.state.stack["manager"] = DocumentManager(FakeEngine(), store, registry_dir=tmp_path)
+    app.state.stack["store"] = store
+    r = client.post(
+        "/api/documents", files={"file": ("scan.pdf", blank_pdf, "application/pdf")}
+    )
+    assert r.status_code == 202
+    body = _wait_ready(client, r.json()["doc_id"])
+    assert body["status"] == "failed"
+    assert "No readable text" in body["error"]
+
+
 def test_full_flow_against_tmp_stack(client, tmp_path, two_page_pdf):
     # Swap in a stack whose registry and index live in a tmp dir, with a
     # fake LLM so no Gemini key is needed.
@@ -89,8 +141,21 @@ def test_full_flow_against_tmp_stack(client, tmp_path, two_page_pdf):
             "/api/documents",
             files={"file": ("notes.pdf", two_page_pdf, "application/pdf")},
         )
-        assert r.status_code == 201, r.text
+        assert r.status_code == 202, r.text
+        assert r.json()["status"] == "indexing"
         doc_id = r.json()["doc_id"]
+        status = _wait_ready(client, doc_id)
+        assert status["document"]["page_count"] == 2
+        assert status["document"]["doc_name"] == "notes.pdf"
+
+        # Uploading the same bytes again returns the existing document.
+        again = client.post(
+            "/api/documents",
+            files={"file": ("copy.pdf", two_page_pdf, "application/pdf")},
+        )
+        assert again.status_code == 200
+        assert again.json()["duplicate"] is True
+        assert again.json()["doc_id"] == doc_id
 
         r = client.get("/api/documents")
         assert any(d["doc_id"] == doc_id for d in r.json()["documents"])

@@ -152,6 +152,11 @@ def chunk_pages(
         window_tokens = carry_tokens
 
     for unit in units:
+        if window and window[-1][0] != unit[0]:
+            # Never pack across a page boundary: a chunk keeps one page
+            # number, so every citation opens the page the text came from.
+            flush()
+            window, window_tokens = [], 0
         if window and window_tokens + unit[2] > chunk_size:
             flush()
         window.append(unit)

@@ -1,208 +1,182 @@
-<!-- DOCUMIND README | dark-friendly | mobile-first -->
+# DocuMind
 
-<div align="center">
+Upload any PDF, read it in the browser and ask questions about it. Every answer is grounded in the document and comes with an explanation, key points, a memory tip and links that open the PDF at the exact page.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://readme-typing-svg.demolab.com?font=Outfit&weight=800&size=34&pause=1200&color=19E6FF&center=true&vCenter=true&width=620&height=70&lines=DOCUMIND;Chat+with+your+PDFs.;Every+answer+has+receipts.">
-  <img src="https://readme-typing-svg.demolab.com?font=Outfit&weight=800&size=34&pause=1200&color=0A7EA4&center=true&vCenter=true&width=620&height=70&lines=DOCUMIND;Chat+with+your+PDFs.;Every+answer+has+receipts." alt="DocuMind"/>
-</picture>
+**Live demo:** https://documind-bhkl.onrender.com/ (free hosting, the first visit after idle can take about a minute to wake up)
 
-<br/>
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![FAISS](https://img.shields.io/badge/FAISS-exact_search-0467DF)
+![Tests](https://img.shields.io/badge/tests-81_passing-2ea043)
+![Hosting](https://img.shields.io/badge/hosting-Render_free-46E3B7)
 
 <p align="center">
-  <b>AI document intelligence with verifiable citations</b><br/>
-  <i>First-principles RAG: no LangChain, no wrappers, every citation resolved from stored metadata</i>
-  <br/><b>PyMuPDF</b> · <b>ONNX MiniLM</b> · <b>FAISS</b> · <b>FastAPI</b> · <b>Groq</b> · <b>Gemini</b>
+  <img src="assets/screenshots/app-desktop.png" alt="DocuMind workspace: PDF on the left, chat on the right" width="880">
 </p>
 
-<br/>
+## Contents
 
-[![Live](https://img.shields.io/badge/Live-documind-19E6FF?style=for-the-badge&labelColor=1F1D1B)](https://documind-bhkl.onrender.com/)
-[![Python](https://img.shields.io/badge/Python-3.12%2B-3C873A?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-backend-7DFF6B?style=for-the-badge&labelColor=1F1D1B)](https://fastapi.tiangolo.com)
-[![Hosting](https://img.shields.io/badge/Hosting-Render%20Free-FFB62E?style=for-the-badge&labelColor=1F1D1B)](https://render.com)
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [API](#api)
+- [Project structure](#project-structure)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Design decisions](#design-decisions)
+- [Limitations](#limitations)
 
-<br/>
+## How it works
 
-<p>
-  <a href="#-overview">Overview</a> &nbsp;•&nbsp;
-  <a href="#-architecture">Architecture</a> &nbsp;•&nbsp;
-  <a href="#-key-features">Features</a> &nbsp;•&nbsp;
-  <a href="#-design-decisions">Decisions</a> &nbsp;•&nbsp;
-  <a href="#-project-structure">Structure</a> &nbsp;•&nbsp;
-  <a href="#-api">API</a> &nbsp;•&nbsp;
-  <a href="#-getting-started">Get Started</a> &nbsp;•&nbsp;
-  <a href="#-quality-and-known-limits">Limits</a>
+1. **Upload.** The PDF opens in the viewer immediately, straight from the browser. Nothing is preloaded: the app starts empty.
+2. **Index.** In the background the server validates the file, extracts text page by page (scanned pages go through OCR), splits it into short passages, embeds them with all-MiniLM-L6-v2 and stores them in FAISS. The chat unlocks when this finishes.
+3. **Ask.** The question is embedded and matched against the passages by exact cosine similarity. A fast LLM answers from those passages only. If nothing relevant is found, the app says the document does not contain the answer.
+4. **Verify.** Citation pills and source buttons jump the viewer to the page the text came from.
+
+<p align="center">
+  <img src="assets/architecture.png" alt="Indexing and answering pipelines" width="820">
 </p>
 
-</div>
+## Features
 
----
-
-## <img src="https://api.iconify.design/lucide/flame.svg?color=%2319E6FF&width=22&height=22" alt=""/> Overview
-
-**Live:** https://documind-bhkl.onrender.com/ (free hosting, first visit after idle can take about a minute to wake up)
-
-> **DocuMind** lets you upload PDFs and ask questions in plain language. It indexes documents offline, retrieves the exact passages that matter with FAISS, and lets a fast LLM (Groq, with Gemini as fallback) answer strictly from those passages. Each answer comes with a plain-language explanation, key points, a memory tip, and citations that open the PDF at the exact page.
-
-| The problem | What DocuMind does |
+| Area | Details |
 |:---|:---|
-| LLMs invent sources | The model only sees `[Passage N]` labels; titles and pages come from the metadata store, so citations cannot hallucinate |
-| RAG demos hide the machinery | Every stage is plain, inspectable Python. No orchestration framework anywhere |
-| Irrelevant questions get confident nonsense | Below a similarity threshold the system refuses instead of guessing |
-| Answers are hard to study from | Every reply is structured: answer, explanation, key points and a memory tip |
-| Pickle files are a code-execution risk | All persisted metadata is JSON. Untrusted bytes can never run code |
+| Upload first | Empty start screen, drag and drop, instant preview while the file is indexed in the background |
+| Any PDF | Text PDFs, scans (OCR through Gemini vision, first 40 pages), no required `.pdf` extension, duplicates detected by SHA-256, clear errors for corrupt or password-protected files |
+| Study-friendly answers | Answer, explanation, key points, memory tip and sources in a fixed layout |
+| Accurate citations | Chunks never cross a page boundary. The model only sees `[Passage N]` labels, and page numbers come from stored metadata, never from the model |
+| Fast | Groq `openai/gpt-oss-120b` (about 0.7 s per answer) with automatic Gemini fallback |
+| Safe by design | Retrieved text is treated as data (prompt-injection resistant), JSON-only persistence (no pickle), rate limits, API keys read from environment variables only and redacted from logs |
+| Responsive | Side-by-side layout on desktop, PDF and Chat tabs on phones and tablets, no horizontal overflow |
+| Multi-document | Switch between uploaded PDFs, search one or all, remove any file |
 
-<div align="center">
-  <img src="assets/screenshots/app-citation-desktop.png" alt="DocuMind workspace: documents, chat and PDF preview" width="900"/>
-  <br/><sub>Workspace: documents, structured answers and the PDF preview, side by side</sub>
-</div>
+## Screenshots
 
-<div align="center">
-  <img src="assets/screenshots/landing-desktop-fold.png" alt="DocuMind landing page" width="540"/>
-  &nbsp;
-  <img src="assets/screenshots/app-mobile-answer.png" alt="DocuMind on mobile" width="190"/>
-  <br/><sub>Landing page (desktop) and the mobile workspace</sub>
-</div>
+<p align="center">
+  <img src="assets/screenshots/landing-desktop.png" alt="Landing page" width="640">
+  <br><sub>Landing page</sub>
+</p>
 
----
+<p align="center">
+  <img src="assets/screenshots/landing-mobile.png" alt="Landing page on mobile" width="200">
+  &nbsp;&nbsp;
+  <img src="assets/screenshots/app-mobile-chat.png" alt="Chat on mobile" width="200">
+  <br><sub>Mobile: landing page and chat tab</sub>
+</p>
 
-## <img src="https://api.iconify.design/lucide/workflow.svg?color=%2319E6FF&width=22&height=22" alt=""/> Architecture
+## Tech stack
 
-Two deterministic pipelines connected by synchronized FAISS + JSON storage:
-
-<div align="center">
-  <img src="assets/architecture.png" alt="DocuMind architecture" width="860"/>
-</div>
-
-**Indexing:** validate (extension, `%PDF-` magic bytes, size, extractable text) → SHA-256 dedupe → PyMuPDF page extraction with reading-order sorting → sentence-aware chunking (~200 tokens, 40 overlap) → all-MiniLM-L6-v2 embeddings, L2-normalized → `faiss.IndexFlatIP` inside `IndexIDMap2`, metadata as JSON.
-
-**Answering:** the question is embedded with the same model → top-k exact cosine search with a relevance threshold → passages are numbered and sent to Groq (`openai/gpt-oss-120b`, low reasoning effort) with a strict grounding prompt, falling back to Gemini if Groq is unavailable → the JSON reply is parsed into answer, explanation, key points and memory tip → `[Passage N]` references are validated against the retrieved set and resolved to document, page, chunk, score and raw text.
-
----
-
-## <img src="https://api.iconify.design/lucide/sparkles.svg?color=%2319E6FF&width=22&height=22" alt=""/> Key Features
-
-| Feature | What you get |
+| Layer | Choice |
 |:---|:---|
-| **Citation boundary** | The LLM never sees document names or page numbers. The UI renders only validated metadata records; out-of-range tags are dropped |
-| **Sentence-aware chunking** | Chunks never sever a sentence mid-thought, with an abbreviation guard so "Fig. 3", "e.g." and "3.14" do not split early |
-| **Defensive ingestion** | Magic-byte, corruption and text-extraction checks before any processing; SHA-256 content hash blocks duplicate indexing |
-| **Multi-document** | Upload, list and delete many PDFs; per-document deletion uses int64 vector ids, not fragile string lookups |
-| **Injection-resistant prompting** | Retrieved text is wrapped in context delimiters and treated as data, so a hostile PDF cannot steer the model |
-| **Named uploads and PDF preview** | Each upload keeps its file name and opens in a built-in viewer (pdf.js). Citations jump to the exact page |
-| **Study-friendly answers** | Answer, explanation, key points and a memory tip on every reply, plus page citations |
-| **Fast inference** | Groq for sub-2-second answers, with automatic Gemini fallback |
-| **SaaS UI** | A landing page and a separate workspace at `/app`, responsive from phone to desktop |
+| Backend | FastAPI, Uvicorn |
+| PDF | PyMuPDF (text extraction, page rendering for OCR) |
+| Embeddings | all-MiniLM-L6-v2 on ONNX Runtime via fastembed (no PyTorch) |
+| Vector search | FAISS `IndexFlatIP` inside `IndexIDMap2` |
+| LLM | Groq (primary), Google Gemini (fallback and OCR) |
+| Frontend | Plain HTML, CSS and JavaScript, pdf.js for the viewer, Inter font |
 
----
+Everything above runs on free tiers.
 
-## <img src="https://api.iconify.design/lucide/gavel.svg?color=%2319E6FF&width=22&height=22" alt=""/> Design Decisions
+## Getting started
 
-Deliberate deviations from the original blueprint, each with a reason:
-
-| Decision | Why |
-|:---|:---|
-| ~200-token chunks, 40 overlap (not 500/100) | all-MiniLM-L6-v2 truncates input at 256 word-pieces; a 500-token chunk loses its second half in the embedding |
-| Tokens counted with the model's own tokenizer | Chunk sizing must match what the model actually sees; a foreign tokenizer miscounts |
-| `IndexIDMap2` with an int64 → metadata JSON map | FAISS deletion needs integer ids, while `doc_id` is a SHA-256 string |
-| FastAPI + web frontend (not Streamlit) | Deploys as one standard web service with a production UI |
-| Groq `openai/gpt-oss-120b` first, Gemini fallback | Measured at about 0.7 s per answer with `reasoning_effort=low`; both models are set by env vars (`GROQ_MODEL`, `GEMINI_MODEL`) |
-| Structured JSON answers | Lets the UI render answer, explanation, key points and memory tip separately; plain-text replies still work |
-| Original PDFs stored beside the index | Powers the preview; removed when the document is deleted |
-| 0.25 similarity threshold is a starting point | Tune on in-scope plus out-of-scope questions and measure recall@k before trusting it |
-| Sample PDFs fetched by script, not committed | Keeps binaries out of git history; `python scripts/download_samples.py` restores them |
-
----
-
-## <img src="https://api.iconify.design/lucide/folder-tree.svg?color=%2319E6FF&width=22&height=22" alt=""/> Project Structure
-
-```
-DocuMind-AI-Document-Intelligence/
-├── server.py                FastAPI entrypoint: REST API + static frontend
-├── src/
-│   ├── config.py            Central settings, env validation, paths
-│   ├── pdf_processor.py     Validation, PyMuPDF extraction, OCR hook
-│   ├── text_chunker.py      Sentence splitting, token-window packing
-│   ├── embeddings.py        MiniLM (ONNX) wrapper, L2 normalization
-│   ├── vector_store.py      FAISS IndexIDMap2 + JSON persistence
-│   ├── retriever.py         Query embedding, top-k, threshold filter
-│   ├── llm.py               Groq + Gemini clients, grounded JSON prompt, fallback
-│   ├── rag_pipeline.py      Retrieval + prompt + citation resolution
-│   ├── document_manager.py  Registry, SHA-256 dedupe, deletion
-│   └── utils.py             Logging, hashing, formatting
-├── static/                  index.html (landing), app.html (workspace), CSS, JS, logo
-├── scripts/download_samples.py  Fetch the evaluation PDFs
-├── data/sample_pdfs/        Evaluation documents (gitignored)
-├── storage/                 FAISS indexes, JSON metadata, stored PDFs (gitignored)
-├── tests/                   71 tests across all pipeline stages
-├── assets/                  Logo and architecture diagram
-├── render.yaml              One-click Render blueprint
-└── requirements.txt         Pinned dependency manifest
+```bash
+git clone https://github.com/vivek-sah23/DocuMind-AI-Document-Intelligence.git
+cd DocuMind-AI-Document-Intelligence
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env        # add GROQ_API_KEY and/or GEMINI_API_KEY
+uvicorn server:app --reload # http://localhost:8000
 ```
 
----
+Free keys: [console.groq.com/keys](https://console.groq.com/keys) and [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Without a key the app still uploads, previews and indexes; only answers are disabled.
 
-## <img src="https://api.iconify.design/lucide/plug.svg?color=%2319E6FF&width=22&height=22" alt=""/> API
+## Configuration
+
+All settings are environment variables, read once in `src/config.py`.
+
+| Variable | Default | Purpose |
+|:---|:---|:---|
+| `GROQ_API_KEY` | none | Fast answers |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Groq model |
+| `GEMINI_API_KEY` | none | Fallback answers and OCR for scanned pages |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model |
+| `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `200` / `40` | Passage size |
+| `TOP_K` | `5` | Passages per question |
+| `MIN_SIMILARITY_SCORE` | `0.25` | Below this the app refuses instead of guessing |
+| `MAX_FILE_SIZE_MB` | `50` | Upload limit |
+
+## API
 
 | Method | Endpoint | Purpose |
 |:---|:---|:---|
-| `GET` | `/api/health` | Models, index size, key status |
-| `GET` | `/app` | The workspace page (landing page is `/`) |
+| `GET` | `/` and `/app` | Landing page and the app |
+| `GET` | `/api/health` | Models, key status, index size |
 | `GET` | `/api/documents` | List indexed documents |
-| `POST` | `/api/documents` | Upload and index a PDF (multipart) |
-| `GET` | `/api/documents/{doc_id}/file` | The original PDF, for the preview |
-| `DELETE` | `/api/documents/{doc_id}` | Remove a document and its vectors |
-| `POST` | `/api/chat` | `{question, doc_id?}` → answer, explanation, key points, memory tip, citations |
+| `POST` | `/api/documents` | Upload a PDF. Returns `202` with `status: indexing`, or `200` with `duplicate: true` |
+| `GET` | `/api/documents/{id}/status` | `indexing`, `ready` (with the document record) or `failed` (with a reason) |
+| `GET` | `/api/documents/{id}/file` | The original PDF, for the viewer |
+| `DELETE` | `/api/documents/{id}` | Remove a document, its vectors and its stored file |
+| `POST` | `/api/chat` | `{question, doc_id?}` returns answer, explanation, key points, memory tip and citations |
 
----
+## Project structure
 
-## <img src="https://api.iconify.design/lucide/rocket.svg?color=%2319E6FF&width=22&height=22" alt=""/> Getting Started
-
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # add GROQ_API_KEY and/or GEMINI_API_KEY
-python scripts/download_samples.py
-uvicorn server:app --reload   # http://localhost:8000
-pytest                        # 71 tests, no API key needed
+```
+server.py              FastAPI app, background indexing, REST API
+src/
+  config.py            Settings and paths
+  pdf_processor.py     Validation, page-aware extraction, OCR hook
+  ocr.py               Gemini vision OCR for scanned pages
+  text_chunker.py      Sentence-aware, page-bounded chunking
+  embeddings.py        MiniLM (ONNX) wrapper
+  vector_store.py      FAISS index and JSON metadata
+  retriever.py         Top-k search with a relevance threshold
+  llm.py               Groq and Gemini clients, grounded prompt, fallback
+  rag_pipeline.py      Retrieval, generation, citation validation
+  document_manager.py  Registry, SHA-256 dedupe, deletion, stored PDFs
+static/                Landing page, app, styles, scripts
+tests/                 81 tests
+render.yaml            Render blueprint
 ```
 
-Free keys: [console.groq.com/keys](https://console.groq.com/keys) (fast, recommended) and [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (fallback). With neither, the app still indexes, searches and previews; only answer generation is disabled. Keys are read from environment variables only and are never logged or returned.
+## Testing
 
-### Deploy on Render (free)
+```bash
+pytest
+```
 
-1. Push this repo to GitHub.
-2. Render dashboard → New → Blueprint → pick the repo (it reads `render.yaml`).
-3. Set `GROQ_API_KEY` (and optionally `GEMINI_API_KEY`) when prompted. Deploy.
+The suite runs offline with no API keys. API tests use throwaway storage, so they never touch real uploads. Covered: validation (including password-protected and corrupt files), extraction and the OCR fallback and its page budget, chunking (no chunk spans two pages), FAISS add and delete, retrieval thresholds, citation validation, rate limiting, secret redaction, and the upload, status, preview, chat and delete flow.
 
-The free plan sleeps after 15 minutes idle; the first visit after idle takes about a minute while the embedding model loads.
+## Deployment
 
-### Evaluation datasets
+Render free plan, configured by `render.yaml`:
 
-| Tier | Document | What it validates |
-|:---|:---|:---|
-| Baseline | NIST Cybersecurity Framework 2.0 | Structured taxonomy, exact page citations |
-| Scale | NASA Systems Engineering Handbook | Multi-hundred-page latency and memory, top-k tuning |
-| Edge cases | Any 3–5 page report | Dense bullets, tables, out-of-scope refusals |
+1. Create a new Blueprint from this repository.
+2. Set `GROQ_API_KEY` and `GEMINI_API_KEY` as secret environment variables.
+3. Deploy. Pushes to `main` redeploy automatically.
+
+## Design decisions
+
+| Decision | Reason |
+|:---|:---|
+| 200-token chunks with 40 overlap | MiniLM truncates at 256 word-pieces, so larger chunks lose their second half in the embedding |
+| One page per chunk | A chunk has one page number. Spanning pages would make citations open the wrong page |
+| `IndexIDMap2` with int64 ids | FAISS deletes by integer id, while document ids are SHA-256 strings |
+| Background indexing | Large PDFs take a while on a free CPU. The viewer opens at once and the UI polls for status |
+| Original PDFs stored beside the index | Powers the viewer and is removed with the document |
+| JSON metadata, never pickle | Untrusted input can never execute code on load |
+| ONNX embeddings | Fits the 512 MB free Render limit |
+
+## Limitations
+
+- **Shared demo.** The hosted demo has no accounts, so uploads are visible to every visitor. Use public or sample PDFs only.
+- **Ephemeral storage.** On the free plan, uploads and the index reset when the service restarts or redeploys.
+- **OCR budget.** Scanned PDFs are read up to the first 40 pages to stay inside the free Gemini quota.
+- **Cold start.** The free service sleeps when idle and takes about a minute to wake.
+- **Threshold.** 0.25 is a reasonable starting point for MiniLM cosine scores. Tune it on your own documents.
 
 ---
 
-## <img src="https://api.iconify.design/lucide/shield-check.svg?color=%2319E6FF&width=22&height=22" alt=""/> Quality and Known Limits
-
-- **OCR is an optional hook.** Scanned pages are detected and flagged; actual OCR needs `pytesseract`, `Pillow` and a system `tesseract` binary, which are not installed by default.
-- **Threshold is a heuristic.** 0.25 works reasonably for MiniLM cosine scores, but tune it on your own documents and measure recall@k.
-- **Shared demo index.** The hosted demo has no login: all visitors share one index and can preview any uploaded PDF. Use public or sample PDFs only. Per-session private uploads are a possible next step.
-- **Ephemeral storage.** On Render's free plan the index and stored PDFs reset on restart or redeploy.
-- **Free-tier memory.** The embedding model runs on ONNX Runtime (no torch) to stay inside the 512 MB Render free limit. One worker and `OMP_NUM_THREADS=1` are set; upgrade the plan if you see out-of-memory restarts.
-- **Index is local.** Storage lives on the service disk, so redeploys on the free plan reset the index. Re-upload documents after a deploy.
-- **Single user.** No accounts or auth; anyone with the URL can upload and ask.
-
----
-
-<div align="center">
-
-© 2026 All rights reserved.<br/>
-Designed & Developed by **Vivek Sah**
-
-</div>
+Designed & Developed by **Vivek** · © 2026 All rights reserved.

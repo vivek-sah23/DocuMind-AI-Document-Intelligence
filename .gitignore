@@ -20,3 +20,6 @@ storage/pdfs/*
 # OS noise
 .DS_Store
 Thumbs.db
+
+storage/pdfs/*
+!storage/pdfs/.gitkeep
