@@ -14,21 +14,6 @@ Upload any PDF, read it in the browser and ask questions about it. Every answer 
   <img src="assets/screenshots/app-desktop.png" alt="DocuMind workspace: PDF on the left, chat on the right" width="880">
 </p>
 
-## Contents
-
-- [How it works](#how-it-works)
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Tech stack](#tech-stack)
-- [Getting started](#getting-started)
-- [Configuration](#configuration)
-- [API](#api)
-- [Project structure](#project-structure)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Design decisions](#design-decisions)
-- [Limitations](#limitations)
-
 ## How it works
 
 1. **Upload.** The PDF opens in the viewer immediately, straight from the browser. Nothing is preloaded: the app starts empty.
