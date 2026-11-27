@@ -33,3 +33,34 @@ class Retriever:
             hits = [h for h in hits if h["doc_id"] == doc_id]
         hits = [h for h in hits if h["score"] >= min_score]
         return hits[:top_k]
+
+    def retrieve_deep(self, question: str, doc_id: str | None = None) -> list[dict]:
+        """Gather everything the document says about a topic: take the best
+        matches over a wide candidate pool, pull in the chunk before and
+        after each one so explanations are not cut mid-thought, and return
+        the result in reading order (document, then position)."""
+        query_vector = self.engine.encode([question])
+        pool = max(settings.deep_top_k * 6, 40)
+        hits = self.store.search(query_vector, pool)
+        if doc_id:
+            hits = [h for h in hits if h["doc_id"] == doc_id]
+        hits = [h for h in hits if h["score"] >= settings.deep_min_score]
+        seeds = hits[: settings.deep_top_k]
+        if not seeds:
+            return []
+        scores = {h["vid"]: h["score"] for h in hits}
+        chosen: dict[int, dict] = {}
+        for h in seeds:
+            chosen[h["vid"]] = h
+        # Expand with neighbours, best seeds first, until the cap.
+        for h in seeds:
+            for nid in self.store.neighbors(h["vid"], h["doc_id"], span=1):
+                if len(chosen) >= settings.deep_max_chunks:
+                    break
+                if nid not in chosen:
+                    meta = self.store.get(nid)
+                    if meta:
+                        meta["score"] = scores.get(nid, max(0.0, h["score"] - 0.05))
+                        chosen[nid] = meta
+        ordered = sorted(chosen.values(), key=lambda m: (m["doc_id"], m["vid"]))
+        return ordered

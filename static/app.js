@@ -4,7 +4,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
-  var state = { items: [], activeKey: null, scope: "doc", busy: false, zoom: 1, page: 1, pdf: null, loadId: 0, seq: 0 };
+  var state = { items: [], activeKey: null, scope: "doc", deep: true, voice: false, busy: false, zoom: 1, page: 1, pdf: null, loadId: 0, seq: 0 };
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -426,9 +426,9 @@
       intro.appendChild(pr);
     } else if (!it.thread.querySelector(".msg")) {
       intro.appendChild(el("h3", null, "Ask anything about " + trimName(it.name)));
-      intro.appendChild(el("p", null, "Answers come with an explanation, a memory tip and page links that open the PDF at that page."));
+      intro.appendChild(el("p", null, "Answers come with an explanation, a memory tip and page links. Ask for any topic and get the whole idea, step by step. Tap Listen to hear it read aloud."));
       var chips = el("div", "chips");
-      ["Summarize this document", "What are the key points?", "What should I remember for an exam?"].forEach(function (q) {
+      ["Explain the main topic of this document", "Summarize this document", "What should I remember for an exam?"].forEach(function (q) {
         var c = el("button", "chip", q);
         c.type = "button";
         c.addEventListener("click", function () { ask(q); });
@@ -454,12 +454,31 @@
     renderScope();
   });
 
-  var form = $("chat-form"), input = $("chat-input"), sendBtn = $("send-btn");
+  var form = $("chat-form"), input = $("chat-input"), sendBtn = $("send-btn"), deepBtn = $("deep-btn"), voiceBtn = $("voice-btn");
+  voiceBtn.addEventListener("click", function () {
+    state.voice = !state.voice;
+    if (!state.voice && window.speechSynthesis) window.speechSynthesis.cancel();
+    renderInput();
+    toast(state.voice ? "Voice on: answers appear in chat and are read aloud." : "Voice off. You can still tap Listen on any answer.");
+  });
+  deepBtn.addEventListener("click", function () {
+    state.deep = !state.deep;
+    renderInput();
+    toast(state.deep ? "Deep dive on: full briefings from across the PDF." : "Quick answers on: short answers with a memory tip.");
+    input.focus({ preventScroll: true });
+  });
   function renderInput() {
     var it = active();
     var ok = it && it.status === "ready" && !state.busy;
     input.disabled = !(it && it.status === "ready");
     sendBtn.disabled = !ok;
+    deepBtn.disabled = !(it && it.status === "ready");
+    voiceBtn.hidden = !window.speechSynthesis;
+    voiceBtn.disabled = deepBtn.disabled;
+    voiceBtn.setAttribute("aria-pressed", state.voice ? "true" : "false");
+    voiceBtn.classList.toggle("on", !!state.voice);
+    deepBtn.setAttribute("aria-pressed", state.deep ? "true" : "false");
+    deepBtn.classList.toggle("on", !!state.deep);
     input.placeholder = !it ? "Ask about this PDF" : it.status === "ready" ? "Ask about " + trimName(it.name) : it.status === "failed" ? "This PDF could not be read" : "Reading the PDF\u2026";
   }
 
@@ -482,7 +501,159 @@
   }
   function section(cls, label) { var s = el("div", "sec " + cls); s.appendChild(el("div", "sec-label", label)); return s; }
 
-  function renderAnswer(res) {
+  /* ---------- audio briefing (browser speech synthesis, free, no keys) ---------- */
+  var tts = window.speechSynthesis || null;
+  var speaking = { btn: null, rate: 1 };
+  function plain(t) { return String(t || "").replace(/\[Passage\s+\d+\]/gi, "").replace(/\*\*/g, "").replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").trim(); }
+  function narration(res) {
+    var parts = [];
+    if (res.title) parts.push(plain(res.title) + ".");
+    parts.push(plain(res.answer));
+    if (res.explanation) parts.push(plain(res.explanation));
+    (res.sections || []).forEach(function (sec) {
+      if (sec.heading) parts.push(plain(sec.heading) + ".");
+      parts.push(plain(sec.body));
+    });
+    if (res.key_points && res.key_points.length) {
+      parts.push("Key points.");
+      res.key_points.forEach(function (p) { parts.push(plain(p)); });
+    }
+    if (res.gaps) parts.push("Not covered in the document. " + plain(res.gaps));
+    return parts.filter(Boolean).join(" ");
+  }
+  function pickVoice() {
+    var vs = tts.getVoices() || [];
+    var en = vs.filter(function (v) { return /^en/i.test(v.lang); });
+    var good = en.filter(function (v) { return /natural|google|samantha|aria|jenny|neural/i.test(v.name); })[0];
+    return good || en.filter(function (v) { return v.default; })[0] || en[0] || null;
+  }
+  function stopSpeech() {
+    if (!tts) return;
+    tts.cancel();
+    if (speaking.btn) { speaking.btn.classList.remove("on"); speaking.btn.querySelector("span").textContent = "Listen"; speaking.btn = null; }
+  }
+  function chunkText(text) {
+    var sentences = text.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) || [text];
+    var out = [], cur = "";
+    sentences.forEach(function (sn) {
+      if ((cur + sn).length > 220 && cur) { out.push(cur.trim()); cur = ""; }
+      cur += sn;
+    });
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }
+  function speak(btn, text) {
+    if (speaking.btn === btn) { stopSpeech(); return; }
+    stopSpeech();
+    var chunks = chunkText(text), i = 0, voice = pickVoice();
+    speaking.btn = btn;
+    btn.classList.add("on"); btn.querySelector("span").textContent = "Stop";
+    function next() {
+      if (speaking.btn !== btn || i >= chunks.length) { if (speaking.btn === btn) stopSpeech(); return; }
+      var u = new SpeechSynthesisUtterance(chunks[i++]);
+      if (voice) u.voice = voice;
+      u.lang = voice ? voice.lang : "en-US";
+      u.rate = speaking.rate;
+      u.onend = next;
+      u.onerror = function () { if (speaking.btn === btn) stopSpeech(); };
+      tts.speak(u);
+    }
+    next();
+  }
+  function listenControls(res) {
+    if (!tts || res.refused) return null;
+    var box = el("div", "listen");
+    var btn = el("button", "listen-btn");
+    btn.type = "button";
+    btn.setAttribute("aria-label", "Listen to this answer");
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg><span>Listen</span>';
+    btn.addEventListener("click", function () { speak(btn, narration(res)); });
+    var sp = el("button", "rate-btn", "1x");
+    sp.type = "button";
+    sp.title = "Speaking speed";
+    sp.addEventListener("click", function () {
+      var rates = [1, 1.25, 1.5, 0.85];
+      speaking.rate = rates[(rates.indexOf(speaking.rate) + 1) % rates.length];
+      sp.textContent = speaking.rate + "x";
+    });
+    box.appendChild(btn); box.appendChild(sp);
+    return box;
+  }
+  window.addEventListener("pagehide", stopSpeech);
+
+  function renderDeep(res, question) {
+    var wrap = el("div", "msg bot");
+    var card = el("div", "card deep");
+    var byPassage = {};
+    (res.citations || []).forEach(function (c) { byPassage[c.passage] = c; });
+    var head = el("div", "sec sec-answer");
+    head.appendChild(el("div", "sec-label", "Deep dive"));
+    head.appendChild(el("h4", "deep-title", res.title || question));
+    if (res.pages && res.pages.length) head.appendChild(el("div", "deep-pages", "Draws on pages " + shortList(res.pages.map(String))));
+    var ot = el("div", "text lead-text"); inline(ot, res.answer, byPassage); head.appendChild(ot);
+    card.appendChild(head);
+    (res.sections || []).forEach(function (sec, i) {
+      var d = el("div", "sec deep-sec");
+      var h = el("div", "deep-h");
+      h.appendChild(el("span", "deep-n", String(i + 1)));
+      h.appendChild(el("span", null, sec.heading || ("Part " + (i + 1))));
+      d.appendChild(h);
+      var bt = el("div", "text"); inline(bt, sec.body, byPassage); d.appendChild(bt);
+      card.appendChild(d);
+    });
+    if (res.key_points && res.key_points.length) {
+      var k = section("sec-points", "Key takeaways"), ul = el("ul", "points");
+      res.key_points.forEach(function (p) { var li = el("li"); inline(li, p, byPassage); ul.appendChild(li); });
+      k.appendChild(ul); card.appendChild(k);
+    }
+    if (res.memory_tip) {
+      var m = section("sec-tip", "Memory tip");
+      var mt = el("div", "text"); inline(mt, res.memory_tip, byPassage); m.appendChild(mt); card.appendChild(m);
+    }
+    if (res.gaps) {
+      var g = section("sec-gaps", "Not covered in the PDF");
+      var gt = el("div", "text"); gt.textContent = res.gaps; g.appendChild(gt); card.appendChild(g);
+    }
+    appendSources(card, res);
+    appendMeta(card, res);
+    wrap.appendChild(card);
+    return wrap;
+  }
+
+  function appendSources(card, res) {
+    if (!(res.citations && res.citations.length)) return;
+    var s = section("sec-sources", "Sources"), row = el("div", "sources"), detail = el("div", "src-detail");
+    detail.hidden = true;
+    res.citations.forEach(function (c) {
+      var b = el("button", "src-btn");
+      b.type = "button";
+      if (state.items.length > 1) b.appendChild(el("span", "nm", c.doc_name));
+      b.appendChild(el("span", null, "p." + c.page_number));
+      b.appendChild(el("span", "sc", Math.round(c.score * 100) + "% match"));
+      b.title = "Open page " + c.page_number;
+      b.addEventListener("click", function () { detail.hidden = false; detail.textContent = c.text; openCitation(c); });
+      row.appendChild(b);
+    });
+    s.appendChild(row); s.appendChild(detail); card.appendChild(s);
+  }
+  function appendMeta(card, res, onDeeper) {
+    var meta = el("div", "meta");
+    meta.appendChild(el("span", null, (res.latency_ms / 1000).toFixed(1) + "s"));
+    if (res.provider) meta.appendChild(el("span", null, res.provider === "groq" ? "Groq" : "Gemini"));
+    meta.appendChild(el("span", null, "From your document only"));
+    var lc = listenControls(res);
+    if (lc) meta.appendChild(lc);
+    if (onDeeper) {
+      var b = el("button", "deeper", "Explain in depth");
+      b.type = "button";
+      b.addEventListener("click", onDeeper);
+      meta.appendChild(b);
+    }
+    card.appendChild(meta);
+  }
+
+  function renderAnswer(res, question) {
+    if (res.mode === "deep" && !res.refused) return renderDeep(res, question);
     var wrap = el("div", "msg bot");
     var card = el("div", "card" + (res.refused ? " refused" : ""));
     var byPassage = {};
@@ -503,26 +674,8 @@
       var m = section("sec-tip", "Memory tip");
       var mt = el("div", "text"); inline(mt, res.memory_tip, byPassage); m.appendChild(mt); card.appendChild(m);
     }
-    if (res.citations && res.citations.length) {
-      var s = section("sec-sources", "Sources"), row = el("div", "sources"), detail = el("div", "src-detail");
-      detail.hidden = true;
-      res.citations.forEach(function (c) {
-        var b = el("button", "src-btn");
-        b.type = "button";
-        if (state.items.length > 1) b.appendChild(el("span", "nm", c.doc_name));
-        b.appendChild(el("span", null, "p." + c.page_number));
-        b.appendChild(el("span", "sc", Math.round(c.score * 100) + "% match"));
-        b.title = "Open page " + c.page_number;
-        b.addEventListener("click", function () { detail.hidden = false; detail.textContent = c.text; openCitation(c); });
-        row.appendChild(b);
-      });
-      s.appendChild(row); s.appendChild(detail); card.appendChild(s);
-    }
-    var meta = el("div", "meta");
-    meta.appendChild(el("span", null, (res.latency_ms / 1000).toFixed(1) + "s"));
-    if (res.provider) meta.appendChild(el("span", null, res.provider === "groq" ? "Groq" : "Gemini"));
-    meta.appendChild(el("span", null, "From your document only"));
-    card.appendChild(meta);
+    appendSources(card, res);
+    appendMeta(card, res, res.refused ? null : function () { ask(question, "deep"); });
     wrap.appendChild(card);
     return wrap;
   }
@@ -532,30 +685,32 @@
     s.appendChild(el("div", "text", text)); card.appendChild(s); wrap.appendChild(card);
     return wrap;
   }
-  function typingNode() {
+  function typingNode(deep) {
     var wrap = el("div", "msg bot"), card = el("div", "card typing");
+    if (deep) { card.classList.add("with-label"); card.appendChild(el("span", "typing-label", "Reading across the whole PDF\u2026")); }
     card.setAttribute("aria-label", "Thinking");
     card.appendChild(el("i")); card.appendChild(el("i")); card.appendChild(el("i"));
     wrap.appendChild(card);
     return wrap;
   }
 
-  function ask(question) {
+  function ask(question, forceMode) {
     question = (question || "").trim();
     var it = active();
     if (!question || state.busy || !it || it.status !== "ready") return;
     if (it.introEl) { it.introEl.remove(); it.introEl = null; }
+    var mode = forceMode || (state.deep ? "deep" : "quick");
     var u = el("div", "msg user");
-    u.appendChild(el("div", "bubble", question));
+    u.appendChild(el("div", "bubble", (mode === "deep" ? "Deep dive: " : "") + question));
     var thread = it.thread;
     thread.appendChild(u);
-    var typing = typingNode();
+    var typing = typingNode(mode === "deep");
     thread.appendChild(typing);
     messages.scrollTop = messages.scrollHeight;
     input.value = ""; autosize();
     state.busy = true; renderInput();
 
-    var payload = { question: question };
+    var payload = { question: question, mode: mode };
     if (state.scope === "doc" || readyItems().length < 2) payload.doc_id = it.key;
     fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
@@ -565,8 +720,9 @@
         if (!res.ok) {
           var d = res.body && res.body.detail;
           node = renderError(typeof d === "string" ? d : "Something went wrong. Please try again.");
-        } else node = renderAnswer(res.body);
+        } else node = renderAnswer(res.body, question);
         thread.appendChild(node);
+        if (state.voice && res.ok) { var lb = node.querySelector(".listen-btn"); if (lb) lb.click(); }
         if (thread.parentNode === messages) messages.scrollTop = Math.max(0, node.offsetTop - 14);
       })
       .catch(function () { typing.remove(); thread.appendChild(renderError("Could not reach the server. It may be waking up, try again in a moment.")); })

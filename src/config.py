@@ -50,6 +50,11 @@ class Settings:
     llm_temperature: float = 0.1
     llm_max_output_tokens: int = 1024
     llm_max_retries: int = 3
+    # Deep-dive mode: wider retrieval, neighbour expansion, longer answers.
+    deep_top_k: int = field(default_factory=lambda: _int_env("DEEP_TOP_K", 10))
+    deep_max_chunks: int = field(default_factory=lambda: _int_env("DEEP_MAX_CHUNKS", 18))
+    deep_min_score: float = field(default_factory=lambda: _float_env("DEEP_MIN_SCORE", 0.2))
+    deep_max_output_tokens: int = 3500
 
     # Embeddings. all-MiniLM-L6-v2 truncates input at 256 word-pieces,
     # so chunks are sized well below that using the model's own tokenizer.

@@ -32,6 +32,8 @@ Upload any PDF, read it in the browser and ask questions about it. Every answer 
 | Upload first | Empty start screen, drag and drop, instant preview while the file is indexed in the background |
 | Any PDF | Text PDFs, scans (OCR through Gemini vision, first 40 pages), no required `.pdf` extension, duplicates detected by SHA-256, clear errors for corrupt or password-protected files |
 | Study-friendly answers | Answer, explanation, key points, memory tip and sources in a fixed layout |
+| Deep dive (default) | Ask for a topic and get a full briefing: overview, step by step sections, key takeaways, memory tip and what the PDF does not cover. Retrieval is wider, pulls in the neighbouring passages and reads them in page order. Switch to quick answers with the toggle, or tap "Explain in depth" on any quick answer |
+| Audio briefing | "Listen" reads any answer aloud next to the written chat answer, with stop and speed controls. "Voice" auto-reads every new answer. Uses the browser's built-in speech synthesis: free, no key, nothing sent to a server |
 | Accurate citations | Chunks never cross a page boundary. The model only sees `[Passage N]` labels, and page numbers come from stored metadata, never from the model |
 | Fast | Groq `openai/gpt-oss-120b` (about 0.7 s per answer) with automatic Gemini fallback |
 | Safe by design | Retrieved text is treated as data (prompt-injection resistant), JSON-only persistence (no pickle), rate limits, API keys read from environment variables only and redacted from logs |
@@ -91,6 +93,8 @@ All settings are environment variables, read once in `src/config.py`.
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `200` / `40` | Passage size |
 | `TOP_K` | `5` | Passages per question |
 | `MIN_SIMILARITY_SCORE` | `0.25` | Below this the app refuses instead of guessing |
+| `DEEP_TOP_K` / `DEEP_MAX_CHUNKS` | `10` / `18` | Best matches and total passages in deep dive |
+| `DEEP_MIN_SCORE` | `0.2` | Relevance floor for deep dive |
 | `MAX_FILE_SIZE_MB` | `50` | Upload limit |
 
 ## API
@@ -104,7 +108,7 @@ All settings are environment variables, read once in `src/config.py`.
 | `GET` | `/api/documents/{id}/status` | `indexing`, `ready` (with the document record) or `failed` (with a reason) |
 | `GET` | `/api/documents/{id}/file` | The original PDF, for the viewer |
 | `DELETE` | `/api/documents/{id}` | Remove a document, its vectors and its stored file |
-| `POST` | `/api/chat` | `{question, doc_id?}` returns answer, explanation, key points, memory tip and citations |
+| `POST` | `/api/chat` | `{question, doc_id?, mode?}`. `mode` is `quick` (default) or `deep`. Quick returns answer, explanation, key points, memory tip and citations. Deep returns title, overview, sections, key points, memory tip, gaps, pages and citations |
 
 ## Project structure
 
@@ -132,7 +136,7 @@ render.yaml            Render blueprint
 pytest
 ```
 
-The suite runs offline with no API keys. API tests use throwaway storage, so they never touch real uploads. Covered: validation (including password-protected and corrupt files), extraction and the OCR fallback and its page budget, chunking (no chunk spans two pages), FAISS add and delete, retrieval thresholds, citation validation, rate limiting, secret redaction, and the upload, status, preview, chat and delete flow.
+The suite runs offline with no API keys. API tests use throwaway storage, so they never touch real uploads. Covered: validation (including password-protected and corrupt files), extraction and the OCR fallback and its page budget, chunking (no chunk spans two pages), FAISS add and delete, retrieval thresholds, deep-dive retrieval and parsing, citation validation, rate limiting, secret redaction, and the upload, status, preview, chat and delete flow.
 
 ## Deployment
 
@@ -159,6 +163,7 @@ Render free plan, configured by `render.yaml`:
 - **Shared demo.** The hosted demo has no accounts, so uploads are visible to every visitor. Use public or sample PDFs only.
 - **Ephemeral storage.** On the free plan, uploads and the index reset when the service restarts or redeploys.
 - **OCR budget.** Scanned PDFs are read up to the first 40 pages to stay inside the free Gemini quota.
+- **Audio.** Listen and Voice depend on the browser's speech voices, so the voice differs per device. Deep dive answers are limited to what the retrieved passages say, so a very broad topic may need a follow-up question.
 - **Cold start.** The free service sleeps when idle and takes about a minute to wake.
 - **Threshold.** 0.25 is a reasonable starting point for MiniLM cosine scores. Tune it on your own documents.
 

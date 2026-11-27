@@ -62,3 +62,25 @@ class TestRetrieval:
             "design trade studies", min_score=0.0, doc_id="nasa"
         )
         assert hits and all(h["doc_id"] == "nasa" for h in hits)
+
+
+def test_deep_retrieval_expands_neighbours_in_reading_order(monkeypatch):
+    import numpy as np
+    from src.config import settings
+    from src.retriever import Retriever
+    from src.vector_store import VectorStore
+
+    class Eng:
+        def encode(self, texts):
+            return np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+
+    store = VectorStore(dim=4)
+    vecs = np.eye(4, dtype=np.float32)[[1, 1, 0, 1, 1]]  # only chunk 2 matches
+    store.add(vecs, [
+        {"doc_id": "d", "doc_name": "d.pdf", "page_number": i + 1,
+         "chunk_id": f"c{i}", "text": f"t{i}"} for i in range(5)
+    ])
+    r = Retriever(Eng(), store)
+    hits = r.retrieve_deep("q", doc_id="d")
+    assert [h["chunk_id"] for h in hits] == ["c1", "c2", "c3"]
+    assert r.retrieve_deep("q", doc_id="other") == []

@@ -84,8 +84,22 @@ class VectorStore:
             meta = self._meta.get(int_id)
             if meta is None:
                 continue
-            hits.append({"score": float(score), **meta})
+            hits.append({"score": float(score), "vid": int_id, **meta})
         return hits
+
+    def neighbors(self, vid: int, doc_id: str, span: int = 1) -> list[int]:
+        """Vector ids within `span` positions of `vid` in the same document,
+        in reading order (ids grow with chunk order inside one document)."""
+        with self._lock:
+            ids = sorted(i for i, m in self._meta.items() if m["doc_id"] == doc_id)
+        if vid not in ids:
+            return []
+        pos = ids.index(vid)
+        return ids[max(0, pos - span): pos + span + 1]
+
+    def get(self, vid: int) -> dict | None:
+        meta = self._meta.get(vid)
+        return {"vid": vid, **meta} if meta else None
 
     # -- persistence ----------------------------------------------------
     def save(self, directory: Path | None = None) -> None:

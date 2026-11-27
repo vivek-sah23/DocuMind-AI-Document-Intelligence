@@ -95,15 +95,75 @@ class RAGPipeline:
             "latency_ms": self._ms(started),
         }
 
+    def deep_answer(self, question: str, doc_id: str | None = None) -> dict:
+        """In-depth explanation of a topic gathered from across the document."""
+        started = time.perf_counter()
+        question = question.strip()
+        refused = {
+            "mode": "deep",
+            "answer": REFUSAL_TEXT,
+            "citations": [],
+            "refused": True,
+        }
+        if not question:
+            return {**refused, "answer": "Ask a question about your uploaded documents.",
+                    "latency_ms": 0}
+        hits = self.retriever.retrieve_deep(question, doc_id=doc_id)
+        if not hits:
+            return {**refused, "latency_ms": self._ms(started)}
+        try:
+            raw = self.generator.generate_deep(question, format_context(hits))
+        except LLMUnavailableError:
+            raise
+        except Exception as exc:
+            logger.error("Deep generation failed: %s", redact(exc))
+            raise LLMUnavailableError("Answer generation failed") from None
+        parsed = parse_structured(raw)
+        provider = getattr(self.generator, "last_provider", None)
+        if parsed is None or parsed.get("sufficient") is False:
+            return {**refused, "provider": provider, "latency_ms": self._ms(started)}
+
+        def clean(v) -> str:
+            return str(v or "").strip()
+
+        sections = []
+        for sec in parsed.get("sections") or []:
+            if isinstance(sec, dict) and clean(sec.get("body")):
+                sections.append({"heading": clean(sec.get("heading")), "body": clean(sec.get("body"))})
+        overview = clean(parsed.get("overview"))
+        if not overview and not sections:
+            return {**refused, "provider": provider, "latency_ms": self._ms(started)}
+        points = parsed.get("key_points") or []
+        key_points = [clean(p) for p in points if clean(p)][:8] if isinstance(points, list) else []
+        memory_tip, gaps = clean(parsed.get("memory_tip")), clean(parsed.get("gaps"))
+        all_text = " ".join([overview, memory_tip, gaps, *key_points,
+                             *[x["body"] for x in sections]])
+        citations = self._resolve_citations(all_text, hits, fallback=False)
+        citations.sort(key=lambda c: (c["doc_name"], c["page_number"], c["passage"]))
+        return {
+            "mode": "deep",
+            "title": clean(parsed.get("title")) or question[:80],
+            "answer": overview,
+            "sections": sections,
+            "key_points": key_points,
+            "memory_tip": memory_tip,
+            "gaps": gaps,
+            "citations": citations,
+            "refused": False,
+            "pages": sorted({c["page_number"] for c in citations}),
+            "provider": provider,
+            "latency_ms": self._ms(started),
+        }
+
     @staticmethod
-    def _resolve_citations(answer: str, hits: list[dict]) -> list[dict]:
+    def _resolve_citations(answer: str, hits: list[dict], fallback: bool = True) -> list[dict]:
         """Keep only passage references that exist in the retrieved set."""
         refs = []
         for match in _PASSAGE_REF.finditer(answer):
             n = int(match.group(1))
             if 1 <= n <= len(hits) and n not in refs:
                 refs.append(n)
-        if not refs:
+        if not refs and fallback:
             # Model answered without citing; attach the top sources so the
             # UI still shows verifiable provenance.
             refs = list(range(1, min(3, len(hits)) + 1))

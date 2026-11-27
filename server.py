@@ -101,6 +101,7 @@ def _page(name: str) -> HTMLResponse:
 
 
 chat_limiter = RateLimiter(limit=10, window_seconds=60)
+deep_limiter = RateLimiter(limit=4, window_seconds=60)
 upload_limiter = RateLimiter(limit=5, window_seconds=300)
 
 
@@ -116,6 +117,7 @@ def client_ip(request: Request) -> str:
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     doc_id: str | None = None
+    mode: str = Field(default="quick", pattern="^(quick|deep)$")
 
 
 @app.get("/", include_in_schema=False)
@@ -257,6 +259,11 @@ def chat(request: ChatRequest, http: Request):
             status_code=429,
             detail="Too many questions. Please wait a minute and try again.",
         )
+    if request.mode == "deep" and not deep_limiter.allow(client_ip(http)):
+        raise HTTPException(
+            status_code=429,
+            detail="Deep dives are heavier. Please wait a minute and try again.",
+        )
     if not settings.llm_configured:
         raise HTTPException(
             status_code=503,
@@ -268,9 +275,10 @@ def chat(request: ChatRequest, http: Request):
             detail="Upload a PDF first so there is something to search.",
         )
     try:
-        return app.state.stack["pipeline"].answer(
-            request.question, doc_id=request.doc_id
-        )
+        pipeline = app.state.stack["pipeline"]
+        if request.mode == "deep":
+            return pipeline.deep_answer(request.question, doc_id=request.doc_id)
+        return pipeline.answer(request.question, doc_id=request.doc_id)
     except LLMUnavailableError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

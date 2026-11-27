@@ -231,3 +231,58 @@ class TestGroq:
 
         with pytest.raises(LLMUnavailableError, match="GROQ_API_KEY"):
             FallbackGenerator([]).generate_answer("q", "c")
+
+
+class DeepRetriever(FakeRetriever):
+    def retrieve_deep(self, question, doc_id=None):
+        return self._hits
+
+
+class DeepGenerator:
+    last_provider = "fake"
+
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def generate_deep(self, question, formatted_context):
+        self.calls.append((question, formatted_context))
+        return self.response
+
+
+class TestDeepDive:
+    GOOD = (
+        '{"sufficient": true, "title": "Govern", "overview": "Overview [Passage 2].",'
+        ' "sections": [{"heading": "Start", "body": "Body [Passage 1] and [Passage 9]."},'
+        ' {"heading": "", "body": ""}], "key_points": ["a [Passage 3]", ""],'
+        ' "memory_tip": "tip", "gaps": "Nothing on cost."}'
+    )
+
+    def test_structured_deep_answer_and_citation_validation(self):
+        hits = [hit(1, page=9), hit(2, page=3), hit(3, page=5)]
+        pipe = RAGPipeline(DeepRetriever(hits), DeepGenerator(self.GOOD))
+        out = pipe.deep_answer("Explain govern")
+        assert out["mode"] == "deep" and out["refused"] is False
+        assert len(out["sections"]) == 1  # empty section dropped
+        assert out["key_points"] == ["a [Passage 3]"]
+        assert out["gaps"] == "Nothing on cost."
+        # Passage 9 does not exist: dropped. Pages sorted ascending.
+        assert [c["passage"] for c in out["citations"]] == [2, 3, 1]
+        assert out["pages"] == [3, 5, 9]
+
+    def test_no_hits_refuses_without_calling_model(self):
+        gen = DeepGenerator(self.GOOD)
+        out = RAGPipeline(DeepRetriever([]), gen).deep_answer("x")
+        assert out["refused"] is True and gen.calls == []
+
+    def test_insufficient_or_bad_json_refuses(self):
+        for raw in ('{"sufficient": false}', "not json"):
+            out = RAGPipeline(DeepRetriever([hit(1)]), DeepGenerator(raw)).deep_answer("x")
+            assert out["refused"] is True
+
+    def test_llm_error_propagates(self):
+        class Boom:
+            def generate_deep(self, q, c):
+                raise LLMUnavailableError("down")
+        with pytest.raises(LLMUnavailableError):
+            RAGPipeline(DeepRetriever([hit(1)]), Boom()).deep_answer("x")

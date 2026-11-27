@@ -197,3 +197,8 @@ def test_redact_removes_secret():
     assert "SECRET123" not in redact("boom SECRET123 trace", "SECRET123")
     assert "AIza" not in redact("key=AIza" + "x" * 30)
     assert "gsk_" not in redact("key=gsk_" + "x" * 30)
+
+
+def test_chat_rejects_unknown_mode(client):
+    r = client.post("/api/chat", json={"question": "hi", "mode": "weird"})
+    assert r.status_code == 422
