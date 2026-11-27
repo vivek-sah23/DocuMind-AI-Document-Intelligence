@@ -9,11 +9,12 @@ from __future__ import annotations
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -62,6 +63,43 @@ app = FastAPI(title="DocuMind", version="3.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+def _asset_version() -> str:
+    """Content hash of every static file; changes whenever any asset changes."""
+    h = hashlib.sha256()
+    for f in sorted(STATIC_DIR.rglob("*")):
+        if f.is_file():
+            h.update(f.name.encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+ASSET_VERSION = _asset_version()
+
+
+@app.middleware("http")
+async def cache_control(request: Request, call_next):
+    """Browsers must never mix a new page with a stale stylesheet.
+
+    HTML is served no-cache so it is always revalidated. Static assets are
+    immutable only when the URL carries the current content hash (?v=...);
+    anything unversioned is revalidated too."""
+    response = await call_next(request)
+    path = request.url.path
+    if path in ("/", "/app"):
+        response.headers["Cache-Control"] = "no-cache"
+    elif path.startswith("/static/"):
+        if request.query_params.get("v") == ASSET_VERSION:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+def _page(name: str) -> HTMLResponse:
+    html = (STATIC_DIR / name).read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("__v__", ASSET_VERSION))
+
+
 chat_limiter = RateLimiter(limit=10, window_seconds=60)
 upload_limiter = RateLimiter(limit=5, window_seconds=300)
 
@@ -82,12 +120,12 @@ class ChatRequest(BaseModel):
 
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    return _page("index.html")
 
 
 @app.get("/app", include_in_schema=False)
 def workspace():
-    return FileResponse(STATIC_DIR / "app.html")
+    return _page("app.html")
 
 
 @app.get("/api/health")
