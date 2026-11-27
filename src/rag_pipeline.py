@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import time
 
-from .llm import REFUSAL_TEXT, GeminiGenerator, LLMUnavailableError, format_context
+from .llm import REFUSAL_TEXT, LLMUnavailableError, format_context, parse_structured
 from .retriever import Retriever
 from .utils import get_logger, redact
 
@@ -20,7 +20,7 @@ _PASSAGE_REF = re.compile(r"\[Passage\s+(\d+)\]", re.IGNORECASE)
 
 
 class RAGPipeline:
-    def __init__(self, retriever: Retriever, generator: GeminiGenerator) -> None:
+    def __init__(self, retriever: Retriever, generator) -> None:
         self.retriever = retriever
         self.generator = generator
 
@@ -53,14 +53,45 @@ class RAGPipeline:
             logger.error("Generation failed: %s", redact(exc))
             raise LLMUnavailableError("Answer generation failed") from None
 
-        citations = self._resolve_citations(raw_answer, hits)
-        refused = raw_answer.strip().startswith(
+        parsed = parse_structured(raw_answer)
+        explanation, key_points, memory_tip = "", [], ""
+        if parsed is not None:
+            if parsed.get("sufficient") is False or not str(parsed.get("answer", "")).strip():
+                answer_text = REFUSAL_TEXT
+            else:
+                answer_text = str(parsed["answer"]).strip()
+                explanation = str(parsed.get("explanation") or "").strip()
+                memory_tip = str(parsed.get("memory_tip") or "").strip()
+                raw_points = parsed.get("key_points") or []
+                if isinstance(raw_points, list):
+                    key_points = [str(p).strip() for p in raw_points if str(p).strip()][:6]
+        else:
+            answer_text = raw_answer.strip()
+
+        refused = answer_text.startswith(
             "The uploaded document(s) do not contain sufficient information"
         )
+        if refused:
+            return {
+                "answer": REFUSAL_TEXT,
+                "explanation": "",
+                "key_points": [],
+                "memory_tip": "",
+                "citations": [],
+                "refused": True,
+                "provider": getattr(self.generator, "last_provider", None),
+                "latency_ms": self._ms(started),
+            }
+        all_text = " ".join([answer_text, explanation, memory_tip, *key_points])
+        citations = self._resolve_citations(all_text, hits)
         return {
-            "answer": raw_answer,
+            "answer": answer_text,
+            "explanation": explanation,
+            "key_points": key_points,
+            "memory_tip": memory_tip,
             "citations": citations,
-            "refused": refused,
+            "refused": False,
+            "provider": getattr(self.generator, "last_provider", None),
             "latency_ms": self._ms(started),
         }
 
@@ -82,6 +113,7 @@ class RAGPipeline:
             citations.append(
                 {
                     "passage": n,
+                    "doc_id": hit["doc_id"],
                     "doc_name": hit["doc_name"],
                     "page_number": hit["page_number"],
                     "chunk_id": hit["chunk_id"],

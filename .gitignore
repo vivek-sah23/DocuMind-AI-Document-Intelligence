@@ -9,6 +9,8 @@ __pycache__/
 # Runtime artifacts (indexes and metadata are generated, not committed)
 storage/indexes/*
 storage/metadata/*
+storage/pdfs/*
+!storage/pdfs/.gitkeep
 !storage/indexes/.gitkeep
 !storage/metadata/.gitkeep
 

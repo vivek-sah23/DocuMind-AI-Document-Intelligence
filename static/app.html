@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Workspace | DocuMind</title>
+  <meta name="theme-color" content="#4f46e5" />
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+<div class="shell">
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DocuMind home">
+      <img src="/static/logo.svg" alt="" class="brand-mark" />
+      <span class="brand-name">DocuMind</span>
+    </a>
+    <div class="topbar-right">
+      <span class="status" id="status-badge" title="Answer engine status"><i></i><span id="status-text">Connecting</span></span>
+      <a class="link-btn" href="/">Home</a>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main class="panes" id="panes" data-active="chat">
+
+    <!-- Documents -->
+    <aside class="pane pane-docs" data-pane="docs" aria-label="Documents">
+      <div class="pane-head"><h2>Documents</h2><span class="count" id="doc-count">0</span></div>
+      <label id="dropzone" class="dropzone" for="file-input" tabindex="0">
+        <span class="dz-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
+        <span class="dz-title">Upload a PDF</span>
+        <span class="dz-sub">Drag and drop or click to browse. Up to 50 MB.</span>
+        <input id="file-input" type="file" accept="application/pdf,.pdf" />
+      </label>
+      <div id="upload-status" class="upload-status" role="status" hidden></div>
+      <ul id="doc-list" class="doc-list"></ul>
+      <p id="doc-empty" class="doc-empty">No documents yet. Upload a PDF to get started.</p>
+      <div class="side-note">Shared demo workspace. Upload public or sample PDFs only.</div>
+      <div class="side-footer"><span>Designed &amp; Developed by <strong>Vivek</strong></span><span>&copy; 2026 All rights reserved.</span></div>
+    </aside>
+
+    <!-- Chat -->
+    <section class="pane pane-chat" data-pane="chat" aria-label="Chat">
+      <div class="pane-head chat-head">
+        <div class="chat-title"><h2>Chat</h2><span class="scope-name" id="scope-name">No document selected</span></div>
+        <div class="scope" id="scope" role="group" aria-label="Search scope" hidden>
+          <button type="button" class="seg active" data-scope="doc">This PDF</button>
+          <button type="button" class="seg" data-scope="all">All PDFs</button>
+        </div>
+      </div>
+      <div id="messages" class="messages" aria-live="polite">
+        <div class="empty" id="empty-state">
+          <div class="empty-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <h3 id="empty-title">Upload a PDF to begin</h3>
+          <p id="empty-sub">Then ask anything about it. Every answer comes with an explanation, a memory tip and page citations.</p>
+          <div class="chips" id="chips" hidden></div>
+        </div>
+      </div>
+      <form id="chat-form" class="chat-form" autocomplete="off">
+        <textarea id="chat-input" rows="1" placeholder="Ask a question about your PDF" aria-label="Your question" maxlength="4000"></textarea>
+        <button type="submit" class="send" id="send-btn" aria-label="Send question">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+        </button>
+      </form>
+    </section>
+
+    <!-- Preview -->
+    <section class="pane pane-preview" data-pane="preview" aria-label="PDF preview">
+      <div class="pane-head preview-head">
+        <div class="preview-title"><h2>Preview</h2><span class="scope-name" id="pv-name">Nothing selected</span></div>
+        <div class="pv-tools" id="pv-tools" hidden>
+          <button type="button" class="icon-btn" id="pv-prev" aria-label="Previous page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="pv-page"><input id="pv-page" type="number" min="1" value="1" aria-label="Page number" /> / <span id="pv-total">1</span></span>
+          <button type="button" class="icon-btn" id="pv-next" aria-label="Next page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+          <span class="pv-sep"></span>
+          <button type="button" class="icon-btn" id="pv-out" aria-label="Zoom out">&minus;</button>
+          <button type="button" class="icon-btn" id="pv-in" aria-label="Zoom in">+</button>
+          <a class="icon-btn" id="pv-open" target="_blank" rel="noopener" aria-label="Open PDF in a new tab" title="Open in new tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></a>
+        </div>
+      </div>
+      <div class="pv-body" id="pv-body">
+        <div class="pv-empty" id="pv-empty">
+          <div class="empty-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+          <p>Select a document to preview it here. Citations in answers jump to the exact page.</p>
+        </div>
+        <div class="pv-pages" id="pv-pages"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar" id="tabbar" aria-label="Workspace sections">
+    <button type="button" data-tab="docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Documents</button>
+    <button type="button" data-tab="chat" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat</button>
+    <button type="button" data-tab="preview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Preview</button>
+  </nav>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -45,10 +45,21 @@ def test_upload_rejects_garbage_pdf(client):
     assert r.status_code == 422
 
 
-def test_chat_requires_gemini_key(client):
+def test_workspace_page_served(client):
+    r = client.get("/app")
+    assert r.status_code == 200
+    assert "DocuMind" in r.text
+
+
+def test_chat_requires_llm_key(client):
     r = client.post("/api/chat", json={"question": "anything"})
     assert r.status_code == 503
-    assert "GEMINI_API_KEY" in r.json()["detail"]
+    assert "GROQ_API_KEY" in r.json()["detail"]
+
+
+def test_preview_unknown_document_404(client):
+    assert client.get("/api/documents/" + "0" * 64 + "/file").status_code == 404
+    assert client.get("/api/documents/..%2F..%2Fetc%2Fpasswd/file").status_code in (404, 422)
 
 
 def test_full_flow_against_tmp_stack(client, tmp_path, two_page_pdf):
@@ -88,8 +99,16 @@ def test_full_flow_against_tmp_stack(client, tmp_path, two_page_pdf):
         assert r.status_code == 200
         assert r.json()["answer"].startswith("mocked")
 
+        # The original PDF is stored and previewable under its own name.
+        r = client.get(f"/api/documents/{doc_id}/file")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/pdf"
+        assert r.content == two_page_pdf
+        assert 'filename="notes.pdf"' in r.headers["content-disposition"]
+
         r = client.delete(f"/api/documents/{doc_id}")
         assert r.status_code == 200
+        assert client.get(f"/api/documents/{doc_id}/file").status_code == 404
     finally:
         object.__setattr__(config.settings, "gemini_api_key", "")
 
@@ -112,3 +131,4 @@ def test_redact_removes_secret():
 
     assert "SECRET123" not in redact("boom SECRET123 trace", "SECRET123")
     assert "AIza" not in redact("key=AIza" + "x" * 30)
+    assert "gsk_" not in redact("key=gsk_" + "x" * 30)

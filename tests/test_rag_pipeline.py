@@ -123,3 +123,111 @@ class TestFormatContext:
         ctx = format_context([hit(1), hit(2)])
         assert "[Passage 1]\ntext of passage 1" in ctx
         assert "[Passage 2]\ntext of passage 2" in ctx
+
+
+class TestStructuredAnswer:
+    JSON = (
+        '{"sufficient": true, "answer": "Six functions [Passage 1].",'
+        ' "explanation": "They form the core [Passage 2].",'
+        ' "key_points": ["Govern is new [Passage 1]", "Recover"],'
+        ' "memory_tip": "GIP-DRR"}'
+    )
+
+    def test_structured_fields_returned_with_citations(self):
+        pipe = RAGPipeline(FakeRetriever([hit(1, page=3), hit(2, page=8)]),
+                           FakeGenerator(self.JSON))
+        out = pipe.answer("q")
+        assert out["answer"] == "Six functions [Passage 1]."
+        assert out["explanation"].startswith("They form")
+        assert out["key_points"] == ["Govern is new [Passage 1]", "Recover"]
+        assert out["memory_tip"] == "GIP-DRR"
+        assert [c["page_number"] for c in out["citations"]] == [3, 8]
+
+    def test_insufficient_json_is_refusal(self):
+        pipe = RAGPipeline(FakeRetriever([hit(1)]), FakeGenerator('{"sufficient": false}'))
+        out = pipe.answer("q")
+        assert out["refused"] is True
+        assert out["citations"] == []
+        assert out["memory_tip"] == ""
+
+    def test_fenced_json_is_parsed(self):
+        pipe = RAGPipeline(FakeRetriever([hit(1)]),
+                           FakeGenerator("```json\n" + self.JSON + "\n```"))
+        assert pipe.answer("q")["memory_tip"] == "GIP-DRR"
+
+    def test_plain_text_still_works(self):
+        pipe = RAGPipeline(FakeRetriever([hit(1)]), FakeGenerator("Plain [Passage 1]."))
+        out = pipe.answer("q")
+        assert out["answer"] == "Plain [Passage 1]."
+        assert out["memory_tip"] == ""
+
+
+class TestGroq:
+    def _gen(self, handler):
+        import httpx
+        from src.llm import GroqGenerator
+
+        return GroqGenerator(api_key="gsk_" + "a" * 30, model_name="m",
+                             transport=httpx.MockTransport(handler))
+
+    def test_success_sends_bearer_and_json_mode(self):
+        import httpx, json
+
+        seen = {}
+
+        def handler(request):
+            seen["auth"] = request.headers["authorization"]
+            seen["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"choices": [{"message": {"content": '{"answer": "ok"}'}}]})
+
+        out = self._gen(handler).generate_answer("q", "<context></context>")
+        assert out == '{"answer": "ok"}'
+        assert seen["auth"].startswith("Bearer gsk_")
+        assert seen["body"]["response_format"] == {"type": "json_object"}
+        assert "reasoning_effort" not in seen["body"]  # model "m" is not gpt-oss
+
+    def test_gpt_oss_uses_low_reasoning(self):
+        import httpx, json
+        from src.llm import GroqGenerator
+
+        seen = {}
+
+        def handler(request):
+            seen["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+        GroqGenerator(api_key="k", model_name="openai/gpt-oss-120b",
+                      transport=httpx.MockTransport(handler)).generate_answer("q", "c")
+        assert seen["body"]["reasoning_effort"] == "low"
+
+    def test_client_error_raises_without_key(self):
+        import httpx
+        from src.llm import LLMUnavailableError
+
+        gen = self._gen(lambda r: httpx.Response(401, json={"error": "bad"}))
+        with pytest.raises(LLMUnavailableError) as exc:
+            gen.generate_answer("q", "c")
+        assert "gsk_" not in str(exc.value)
+
+    def test_fallback_uses_next_provider(self):
+        from src.llm import FallbackGenerator
+
+        class Down:
+            provider = "groq"
+            def generate_answer(self, q, c):
+                raise LLMUnavailableError("down")
+
+        class Up:
+            provider = "gemini"
+            def generate_answer(self, q, c):
+                return "fine"
+
+        fb = FallbackGenerator([Down(), Up()])
+        assert fb.generate_answer("q", "c") == "fine"
+        assert fb.last_provider == "gemini"
+
+    def test_fallback_with_no_keys(self):
+        from src.llm import FallbackGenerator
+
+        with pytest.raises(LLMUnavailableError, match="GROQ_API_KEY"):
+            FallbackGenerator([]).generate_answer("q", "c")

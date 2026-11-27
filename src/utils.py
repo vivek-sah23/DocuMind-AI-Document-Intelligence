@@ -49,7 +49,8 @@ def redact(text: str, secret: str | None = None) -> str:
     out = str(text)
     if secret:
         out = out.replace(secret, "[redacted]")
-    return re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "[redacted]", out)
+    out = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "[redacted]", out)
+    return re.sub(r"gsk_[0-9A-Za-z]{20,}", "[redacted]", out)
 
 
 class RateLimiter:

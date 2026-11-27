@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from src.config import settings
 from src.document_manager import DocumentManager, DuplicateDocumentError
 from src.embeddings import EmbeddingEngine
-from src.llm import GeminiGenerator, LLMUnavailableError
+from src.llm import LLMUnavailableError, build_generator
 from src.pdf_processor import PDFValidationError
 from src.rag_pipeline import RAGPipeline
 from src.retriever import Retriever
@@ -36,7 +36,7 @@ def build_stack() -> dict:
     store = VectorStore.load()
     manager = DocumentManager(engine, store)
     retriever = Retriever(engine, store)
-    pipeline = RAGPipeline(retriever, GeminiGenerator())
+    pipeline = RAGPipeline(retriever, build_generator())
     return {
         "engine": engine,
         "store": store,
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="DocuMind", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="DocuMind", version="2.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -79,6 +79,11 @@ def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/app", include_in_schema=False)
+def workspace():
+    return FileResponse(STATIC_DIR / "app.html")
+
+
 @app.get("/api/health")
 def health():
     stack = app.state.stack
@@ -88,6 +93,9 @@ def health():
         "embedding_model": stack["engine"].model_name,
         "gemini_model": settings.gemini_model,
         "gemini_configured": settings.gemini_configured,
+        "groq_configured": settings.groq_configured,
+        "groq_model": settings.groq_model if settings.groq_configured else None,
+        "llm_configured": settings.llm_configured,
         "documents": len(docs),
         "vectors": stack["store"].size,
     }
@@ -116,6 +124,24 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     return record
 
 
+@app.get("/api/documents/{doc_id}/file")
+def document_file(doc_id: str):
+    path = app.state.stack["manager"].pdf_path(doc_id)
+    record = app.state.stack["manager"].get(doc_id)
+    if path is None or record is None:
+        raise HTTPException(status_code=404, detail="Preview not available for this document")
+    safe_name = record["doc_name"].replace('"', "").replace("\n", " ")
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_name}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
 @app.delete("/api/documents/{doc_id}")
 def delete_document(doc_id: str):
     if not app.state.stack["manager"].delete(doc_id):
@@ -130,10 +156,10 @@ def chat(request: ChatRequest, http: Request):
             status_code=429,
             detail="Too many questions. Please wait a minute and try again.",
         )
-    if not settings.gemini_configured:
+    if not settings.llm_configured:
         raise HTTPException(
             status_code=503,
-            detail="GEMINI_API_KEY is not configured on the server yet.",
+            detail="No LLM API key is configured on the server yet (GROQ_API_KEY or GEMINI_API_KEY).",
         )
     if app.state.stack["store"].size == 0:
         raise HTTPException(

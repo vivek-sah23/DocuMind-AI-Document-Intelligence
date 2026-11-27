@@ -43,6 +43,10 @@ class Settings:
     # Verified GA endpoint as of Nov 2026 (aistudio.google.com/docs/models).
     # Override in .env, e.g. gemini-4-hydrogen for higher quality.
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    # Groq (OpenAI-compatible, very fast inference). Used first when a key is
+    # set; Gemini stays as the automatic fallback.
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_model: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     llm_temperature: float = 0.1
     llm_max_output_tokens: int = 1024
     llm_max_retries: int = 3
@@ -79,11 +83,20 @@ class Settings:
     # Storage
     index_dir: Path = BASE_DIR / "storage" / "indexes"
     metadata_dir: Path = BASE_DIR / "storage" / "metadata"
+    pdf_dir: Path = BASE_DIR / "storage" / "pdfs"
     sample_dir: Path = BASE_DIR / "data" / "sample_pdfs"
 
     def ensure_dirs(self) -> None:
-        for d in (self.index_dir, self.metadata_dir, self.sample_dir):
+        for d in (self.index_dir, self.metadata_dir, self.pdf_dir, self.sample_dir):
             d.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def groq_configured(self) -> bool:
+        return bool(self.groq_api_key)
+
+    @property
+    def llm_configured(self) -> bool:
+        return self.groq_configured or self.gemini_configured
 
     @property
     def gemini_configured(self) -> bool:

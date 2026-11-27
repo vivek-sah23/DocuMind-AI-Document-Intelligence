@@ -15,6 +15,8 @@ numpy==1.26.4
 google-genai==1.9.0
 python-dotenv==1.0.1
 
+# HTTP client (Groq) and tests
+httpx==0.28.1
+
 # Testing
 pytest==8.3.4
-httpx==0.28.1

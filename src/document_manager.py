@@ -27,11 +27,17 @@ class DocumentManager:
         engine: EmbeddingEngine,
         store: VectorStore,
         registry_dir: Path | None = None,
+        pdf_dir: Path | None = None,
     ) -> None:
         self.engine = engine
         self.store = store
         self.registry_dir = Path(registry_dir) if registry_dir else settings.metadata_dir
         self.registry_dir.mkdir(parents=True, exist_ok=True)
+        # Original PDFs are kept so the UI can preview what was uploaded.
+        self.pdf_dir = Path(pdf_dir) if pdf_dir else (
+            settings.pdf_dir if registry_dir is None else self.registry_dir / "pdfs"
+        )
+        self.pdf_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._docs: dict[str, dict] = self._load_registry()
 
@@ -57,6 +63,13 @@ class DocumentManager:
     # -- public API -------------------------------------------------------
     def list_documents(self) -> list[dict]:
         return sorted(self._docs.values(), key=lambda r: r["uploaded_at"])
+
+    def pdf_path(self, doc_id: str) -> Path | None:
+        """Path of the stored original PDF, or None if unknown or missing."""
+        if doc_id not in self._docs:  # also blocks path traversal
+            return None
+        path = self.pdf_dir / f"{doc_id}.pdf"
+        return path if path.is_file() else None
 
     def get(self, doc_id: str) -> dict | None:
         return self._docs.get(doc_id)
@@ -90,6 +103,7 @@ class DocumentManager:
         with self._lock:
             self.store.add(vectors, metadatas)
             self.store.save()
+            (self.pdf_dir / f"{doc_id}.pdf").write_bytes(data)
             record = {
                 "doc_id": doc_id,
                 "doc_name": filename,
@@ -115,6 +129,7 @@ class DocumentManager:
             self.store.save()
             del self._docs[doc_id]
             self._save_registry()
+            (self.pdf_dir / f"{doc_id}.pdf").unlink(missing_ok=True)
         logger.info("Deleted doc %s (%d vectors)", doc_id[:12], removed)
         return True
 
